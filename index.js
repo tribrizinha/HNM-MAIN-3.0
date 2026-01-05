@@ -4,7 +4,6 @@ const mongoose = require('mongoose');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// COLE SUA SENHA NO LUGAR DE <db_password> ABAIXO:
 const MONGO_URI = "mongodb+srv://tribridzinha17072010:<tribridzinha17072010>@tribridzinha17072010.n9itw5i.mongodb.net/?appName=Tribridzinha17072010";
 
 app.use(cors());
@@ -84,4 +83,5 @@ app.get('/listPlayers', async (req, res) => {
 });
 
 app.listen(PORT, () => console.log("Servidor rodando!"));
+
 
