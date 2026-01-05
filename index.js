@@ -6,10 +6,10 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// Banco de dados em memória (os dados ficam salvos enquanto o servidor estiver ligado)
+// Banco de dados em memória
 let playerDatabase = {};
 
-// Página inicial
+// Página inicial com Painel de Controle
 app.get('/', (req, res) => {
     res.send(`
         <html>
@@ -17,39 +17,33 @@ app.get('/', (req, res) => {
             <title>Heroes Data Transfer</title>
             <style>
                 body { font-family: Arial; padding: 20px; background: #f0f0f0; }
-                .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; }
+                .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
                 h1 { color: #333; }
-                input, textarea, button { width: 100%; padding: 10px; margin: 10px 0; font-size: 16px; }
-                button { background: #4CAF50; color: white; border: none; cursor: pointer; }
+                input, textarea, button { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; }
+                button { background: #4CAF50; color: white; border: none; cursor: pointer; font-weight: bold; }
                 button:hover { background: #45a049; }
-                .success { color: green; }
-                .error { color: red; }
+                .success { color: green; font-weight: bold; }
+                .error { color: red; font-weight: bold; }
+                ul { list-style: none; padding: 0; }
+                li { background: #eee; margin: 5px 0; padding: 10px; border-radius: 5px; }
             </style>
         </head>
         <body>
             <div class="container">
-                <h1>🎮 Heroes Data Transfer API</h1>
-                <p>Use este painel para adicionar dados de jogadores.</p>
+                <h1>🎮 Heroes Data Transfer</h1>
+                <p>Cadastre os IDs dos jogadores para permitir a transferência.</p>
                 
-                <h2>Adicionar Dados de Jogador</h2>
+                <h2>Adicionar Jogador</h2>
                 <form id="addForm">
-                    <label>User ID do Roblox:</label>
-                    <input type="text" id="userId" placeholder="Ex: 123456789" required>
-                    
-                    <label>Coins:</label>
-                    <input type="number" id="coins" placeholder="Ex: 5000" required>
-                    
-                    <label>Level:</label>
-                    <input type="number" id="level" placeholder="Ex: 10" required>
-                    
-                    <label>Dados Extras (JSON - opcional):</label>
-                    <textarea id="extraData" rows="5" placeholder='{"Inventory": [], "Wins": 0}'></textarea>
-                    
-                    <button type="submit">Adicionar Jogador</button>
+                    <input type="text" id="userId" placeholder="User ID do Roblox (ex: 123456)" required>
+                    <input type="number" id="coins" placeholder="Quantidade de Coins" required>
+                    <input type="number" id="level" placeholder="Level do Jogador" required>
+                    <textarea id="extraData" rows="3" placeholder='Dados Extras (JSON): {"Wins": 5}'></textarea>
+                    <button type="submit">Adicionar ao Banco de Dados</button>
                 </form>
                 <div id="message"></div>
                 
-                <h2>Jogadores Cadastrados</h2>
+                <h2>Jogadores na Fila</h2>
                 <button onclick="loadPlayers()">Atualizar Lista</button>
                 <div id="playerList"></div>
             </div>
@@ -57,26 +51,15 @@ app.get('/', (req, res) => {
             <script>
                 document.getElementById('addForm').addEventListener('submit', async (e) => {
                     e.preventDefault();
-                    
                     const userId = document.getElementById('userId').value;
                     const coins = parseInt(document.getElementById('coins').value);
                     const level = parseInt(document.getElementById('level').value);
                     const extraData = document.getElementById('extraData').value;
                     
-                    let data = {
-                        Coins: coins,
-                        Level: level,
-                        HasTransferred: false
-                    };
-                    
+                    let data = { Coins: coins, Level: level, HasTransferred: false };
                     if (extraData.trim()) {
-                        try {
-                            const extra = JSON.parse(extraData);
-                            data = { ...data, ...extra };
-                        } catch (e) {
-                            alert('Erro no JSON dos dados extras!');
-                            return;
-                        }
+                        try { Object.assign(data, JSON.parse(extraData)); } 
+                        catch (e) { alert('Erro no JSON extra!'); return; }
                     }
                     
                     const response = await fetch('/addPlayerData', {
@@ -87,9 +70,8 @@ app.get('/', (req, res) => {
                     
                     const result = await response.json();
                     const msg = document.getElementById('message');
-                    
                     if (result.success) {
-                        msg.innerHTML = '<p class="success">✅ Jogador adicionado com sucesso!</p>';
+                        msg.innerHTML = '<p class="success">✅ Adicionado!</p>';
                         document.getElementById('addForm').reset();
                         loadPlayers();
                     } else {
@@ -101,16 +83,9 @@ app.get('/', (req, res) => {
                     const response = await fetch('/listPlayers');
                     const result = await response.json();
                     const list = document.getElementById('playerList');
-                    
-                    if (result.players.length === 0) {
-                        list.innerHTML = '<p>Nenhum jogador cadastrado ainda.</p>';
-                    } else {
-                        list.innerHTML = '<ul>' + result.players.map(p => 
-                            '<li><strong>User ID:</strong> ' + p + '</li>'
-                        ).join('') + '</ul>';
-                    }
+                    list.innerHTML = result.players.length === 0 ? '<p>Vazio</p>' : 
+                        '<ul>' + result.players.map(p => '<li>ID: ' + p + '</li>').join('') + '</ul>';
                 }
-                
                 loadPlayers();
             </script>
         </body>
@@ -118,78 +93,30 @@ app.get('/', (req, res) => {
     `);
 });
 
-// Endpoint que o Roblox vai usar
+// Endpoint de Busca (Roblox)
 app.get('/getOrFetchPlayerData', (req, res) => {
-    try {
-        const userId = req.query.userId;
-        
-        if (!userId) {
-            return res.status(400).json({
-                success: false,
-                error: "userId is required"
-            });
-        }
-
-        const playerData = playerDatabase[userId];
-        
-        if (!playerData) {
-            return res.status(404).json({
-                success: false,
-                error: "Player data not found"
-            });
-        }
-        
-        res.json({
-            success: true,
-            data: {
-                Data: playerData
-            }
-        });
-        
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
+    const userId = req.query.userId;
+    const playerData = playerDatabase[userId];
+    
+    if (!userId || !playerData) {
+        return res.status(404).json({ success: false, error: "Player not found" });
     }
+    
+    res.json({ success: true, data: { Data: playerData } });
 });
 
-// Adicionar dados de jogador
+// Endpoint de Cadastro (Painel)
 app.post('/addPlayerData', (req, res) => {
-    try {
-        const { userId, data } = req.body;
-        
-        if (!userId || !data) {
-            return res.status(400).json({
-                success: false,
-                error: "userId and data are required"
-            });
-        }
-        
-        playerDatabase[userId] = data;
-        
-        res.json({
-            success: true,
-            message: "Player data added successfully"
-        });
-        
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
-    }
+    const { userId, data } = req.body;
+    if (!userId || !data) return res.status(400).json({ success: false, error: "Missing data" });
+    
+    playerDatabase[userId] = data;
+    res.json({ success: true });
 });
 
-// Listar todos os jogadores
+// Listagem
 app.get('/listPlayers', (req, res) => {
-    res.json({
-        success: true,
-        players: Object.keys(playerDatabase)
-    });
+    res.json({ success: true, players: Object.keys(playerDatabase) });
 });
 
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-});
-```
+app.listen(PORT, () => console.log(`Rodando na porta ${PORT}`));
