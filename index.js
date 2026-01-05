@@ -217,13 +217,6 @@ app.get('/', (req, res) => {
             align-items: center;
             gap: 15px;
         }
-        .player-avatar {
-            width: 60px;
-            height: 60px;
-            border-radius: 12px;
-            border: 2px solid rgba(0,255,136,0.3);
-            object-fit: cover;
-        }
         .player-name {
             font-size: 17px;
             font-weight: 600;
@@ -375,12 +368,10 @@ app.get('/', (req, res) => {
 
                 list.innerHTML = players.map((player) => {
                     const isOnline = (Date.now() - new Date(player.lastSeen).getTime()) < 60000;
-                    const thumbnailUrl = player.thumbnailUrl || \`https://www.roblox.com/headshot-thumbnail/image?userId=\${player.userId}&width=150&height=150&format=png\`;
                     
                     return \`
                         <div class="player-item">
                             <div class="player-main">
-                                <img src="\${thumbnailUrl}" alt="\${player.username}" class="player-avatar">
                                 <div>
                                     <div class="player-name">\${player.username}</div>
                                     <div class="player-id">ID: \${player.userId}</div>
