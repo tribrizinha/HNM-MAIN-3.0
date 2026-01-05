@@ -22,6 +22,25 @@ const authMiddleware = (req, res, next) => {
     res.status(401).json({ success: false, message: 'Senha incorreta' });
 };
 
+// Blacklist de PlaceIds
+const BlacklistPlaceIds = [
+    "136919097669246" // IDs dos places que não devem salvar
+];
+
+// Middleware para verificar blacklist
+const checkBlacklist = (req, res, next) => {
+    const placeId = req.headers['x-place-id'] || req.body.placeId;
+    
+    if (placeId && BlacklistPlaceIds.includes(placeId.toString())) {
+        return res.status(403).json({ 
+            success: false, 
+            message: 'Este Place está na blacklist e não pode salvar dados' 
+        });
+    }
+    
+    next();
+};
+
 // Schema
 const playerSchema = new mongoose.Schema({
     userId: { type: String, required: true, unique: true },
@@ -29,7 +48,10 @@ const playerSchema = new mongoose.Schema({
     thumbnailUrl: { type: String, default: "" },
     data: Object,
     lastSeen: { type: Date, default: Date.now },
-    firstSeen: { type: Date, default: Date.now }
+    firstSeen: { type: Date, default: Date.now },
+    blacklisted: { type: Boolean, default: false },
+    manuallyAdded: { type: Boolean, default: false }, // Flag para perfis adicionados manualmente
+    transferCompleted: { type: Boolean, default: false } // Flag para indicar se já fez a transferência
 });
 
 const Player = mongoose.model('Player', playerSchema);
@@ -366,6 +388,32 @@ app.get('/', (req, res) => {
             background: linear-gradient(135deg, #00ff88, #00cc6a);
             color: #000;
         }
+        .blacklist-btn {
+            background: rgba(255, 150, 0, 0.3);
+            border: 2px solid rgba(255, 150, 0, 0.6);
+            color: #ffaa44;
+            padding: 10px 18px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 700;
+            transition: all 0.3s;
+            white-space: nowrap;
+        }
+        .blacklist-btn:hover {
+            background: rgba(255, 150, 0, 0.5);
+            border-color: #ffaa44;
+            color: #fff;
+        }
+        .blacklist-btn.active {
+            background: rgba(255, 50, 50, 0.4);
+            border-color: #ff5555;
+            color: #ff5555;
+        }
+        .player-item.blacklisted {
+            opacity: 0.6;
+            border-left-color: #ff5555;
+        }
         .pagination {
             display: flex;
             justify-content: center;
@@ -653,12 +701,16 @@ app.get('/', (req, res) => {
 
             list.innerHTML = playersToShow.map((player) => {
                 const isOnline = (Date.now() - new Date(player.lastSeen).getTime()) < 60000;
+                const isBlacklisted = player.blacklisted || false;
                 
                 return \`
-                    <div class="player-item">
+                    <div class="player-item \${isBlacklisted ? 'blacklisted' : ''}">
                         <div class="player-main">
                             <div>
-                                <div class="player-name">\${player.username}</div>
+                                <div class="player-name">
+                                    \${player.username}
+                                    \${isBlacklisted ? '<span style="color: #ff5555; font-size: 12px; margin-left: 8px;">🚫 BLOQUEADO</span>' : ''}
+                                </div>
                                 <div class="player-id">ID: \${player.userId}</div>
                             </div>
                         </div>
@@ -666,7 +718,10 @@ app.get('/', (req, res) => {
                             <span class="status-tag \${isOnline ? 'online' : 'offline'}">
                                 \${isOnline ? 'ONLINE' : 'OFFLINE'}
                             </span>
-                            <button class="edit-btn" onclick="openEditModal('\${player.userId}', '\${player.username}')">
+                            <button class="blacklist-btn \${isBlacklisted ? 'active' : ''}" onclick="toggleBlacklist('\${player.userId}', '\${player.username}', \${isBlacklisted})">
+                                \${isBlacklisted ? '✓ Desbloquear' : '🚫 Bloquear'}
+                            </button>
+                            <button class="edit-btn" onclick="openEditModal('\${player.userId}', '\${player.username}', \${isBlacklisted})">
                                 ✏️ Editar
                             </button>
                             <button class="delete-btn" onclick="openConfirmModal('\${player.userId}', '\${player.username}')">
@@ -720,7 +775,12 @@ app.get('/', (req, res) => {
             document.getElementById('confirmModal').classList.remove('show');
         }
 
-        async function openEditModal(userId, username) {
+        async function openEditModal(userId, username, isBlacklisted) {
+            if (isBlacklisted) {
+                alert('Este jogador está bloqueado e não pode ser editado. Desbloqueie-o primeiro.');
+                return;
+            }
+            
             playerToEdit = userId;
             
             try {
@@ -744,6 +804,32 @@ app.get('/', (req, res) => {
             } catch (error) {
                 console.error('Erro:', error);
                 alert('Erro ao carregar dados do jogador');
+            }
+        }
+
+        async function toggleBlacklist(userId, username, currentStatus) {
+            const action = currentStatus ? 'desbloquear' : 'bloquear';
+            const confirm = window.confirm(\`Tem certeza que deseja \${action} o jogador "\${username}"?\n\n\${!currentStatus ? 'ATENÇÃO: Jogadores bloqueados não poderão atualizar seus dados do jogo!' : 'O jogador poderá voltar a atualizar dados normalmente.'}\`);
+            
+            if (!confirm) return;
+
+            try {
+                const response = await fetch(\`/toggleBlacklist/\${userId}\`, {
+                    method: 'POST',
+                    headers: { 'x-password': savedPassword }
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    alert(result.message);
+                    await loadPlayers();
+                    renderPlayers();
+                } else {
+                    alert('Erro ao atualizar status da blacklist');
+                }
+            } catch (error) {
+                console.error('Erro:', error);
+                alert('Erro ao atualizar status da blacklist');
             }
         }
 
@@ -885,12 +971,19 @@ app.get('/', (req, res) => {
                     body: JSON.stringify({
                         userId: userId,
                         username: username,
-                        data: fullData
+                        data: fullData,
+                        manuallyAdded: true
                     })
                 });
 
                 if (response.ok) {
-                    alert(\`Jogador \${username} adicionado com sucesso!\`);
+                    // Marcar como adicionado manualmente no banco
+                    await fetch(\`/setManualFlag/\${userId}\`, {
+                        method: 'POST',
+                        headers: { 'x-password': savedPassword }
+                    });
+                    
+                    alert(\`Jogador \${username} adicionado com sucesso!\\n\\nIMPORTANTE: Os dados deste jogador estão PROTEGIDOS até que ele faça a transferência no jogo.\`);
                     document.getElementById('addUserId').value = '';
                     document.getElementById('addCoins').value = '0';
                     document.getElementById('addCharacters').value = '[]';
@@ -939,25 +1032,7 @@ app.get('/', (req, res) => {
 });
 
 // Rotas
-app.post('/addPlayerData', authMiddleware, async (req, res) => {
-    const { userId, username, data } = req.body;
-    if (!userId) {
-        return res.status(400).json({ success: false, message: 'userId obrigatório' });
-    }
-    try {
-        const thumbnailUrl = `https://www.roblox.com/headshot-thumbnail/image?userId=${userId}&width=150&height=150&format=png`;
-        await Player.findOneAndUpdate(
-            { userId }, 
-            { username: username || 'Desconhecido', thumbnailUrl, data, lastSeen: Date.now() }, 
-            { upsert: true, setDefaultsOnInsert: true }
-        );
-        res.json({ success: true });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-});
-
-app.get('/getOrFetchPlayerData', authMiddleware, async (req, res) => {
+app.get('/getOrFetchPlayerData', async (req, res) => {
     const userId = req.query.userId;
     if (!userId) {
         return res.status(400).json({ success: false, message: 'userId obrigatório' });
@@ -967,7 +1042,63 @@ app.get('/getOrFetchPlayerData', authMiddleware, async (req, res) => {
         if (!player) {
             return res.status(404).json({ success: false, message: 'Jogador não encontrado' });
         }
-        res.json({ success: true, data: { Data: player.data } });
+        res.json({ 
+            success: true, 
+            data: { Data: player.data },
+            manuallyAdded: player.manuallyAdded || false,
+            transferCompleted: player.transferCompleted || false
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.post('/addPlayerData', checkBlacklist, async (req, res) => {
+    const { userId, username, data, transferCompleted } = req.body;
+    if (!userId) {
+        return res.status(400).json({ success: false, message: 'userId obrigatório' });
+    }
+    try {
+        const existingPlayer = await Player.findOne({ userId });
+        
+        // Verificar se está na blacklist
+        if (existingPlayer && existingPlayer.blacklisted) {
+            return res.status(403).json({ 
+                success: false, 
+                message: 'Este jogador está na blacklist e não pode ter dados atualizados' 
+            });
+        }
+        
+        // PROTEÇÃO: Se foi adicionado manualmente e ainda não fez transferência, NÃO sobrescrever
+        if (existingPlayer && existingPlayer.manuallyAdded && !existingPlayer.transferCompleted && !transferCompleted) {
+            return res.status(200).json({ 
+                success: true,
+                message: 'Perfil protegido. Aguardando transferência.',
+                protected: true
+            });
+        }
+        
+        const thumbnailUrl = `https://www.roblox.com/headshot-thumbnail/image?userId=${userId}&width=150&height=150&format=png`;
+        
+        const updateData = { 
+            username: username || 'Desconhecido', 
+            thumbnailUrl, 
+            data, 
+            lastSeen: Date.now()
+        };
+        
+        // Se a transferência foi completada, marcar como tal
+        if (transferCompleted) {
+            updateData.transferCompleted = true;
+        }
+        
+        await Player.findOneAndUpdate(
+            { userId }, 
+            updateData, 
+            { upsert: true, setDefaultsOnInsert: true }
+        );
+        
+        res.json({ success: true });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -976,7 +1107,7 @@ app.get('/getOrFetchPlayerData', authMiddleware, async (req, res) => {
 app.get('/listPlayers', authMiddleware, async (req, res) => {
     try {
         const players = await Player.find()
-            .select('userId username thumbnailUrl lastSeen')
+            .select('userId username thumbnailUrl lastSeen blacklisted')
             .sort({ lastSeen: -1 });
         res.json({ success: true, players });
     } catch (error) {
@@ -1005,10 +1136,57 @@ app.post('/updatePlayerData', authMiddleware, async (req, res) => {
         return res.status(400).json({ success: false, message: 'userId obrigatório' });
     }
     try {
+        // Verificar se o jogador está na blacklist
+        const existingPlayer = await Player.findOne({ userId });
+        if (existingPlayer && existingPlayer.blacklisted) {
+            return res.status(403).json({ 
+                success: false, 
+                message: 'Este jogador está na blacklist e não pode ter dados atualizados' 
+            });
+        }
+        
         await Player.findOneAndUpdate(
             { userId },
             { data, lastSeen: Date.now() },
             { upsert: false }
+        );
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.post('/toggleBlacklist/:userId', authMiddleware, async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const player = await Player.findOne({ userId });
+        
+        if (!player) {
+            return res.status(404).json({ success: false, message: 'Jogador não encontrado' });
+        }
+        
+        const newBlacklistStatus = !player.blacklisted;
+        await Player.findOneAndUpdate(
+            { userId },
+            { blacklisted: newBlacklistStatus }
+        );
+        
+        res.json({ 
+            success: true, 
+            blacklisted: newBlacklistStatus,
+            message: newBlacklistStatus ? 'Jogador adicionado à blacklist' : 'Jogador removido da blacklist'
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.post('/setManualFlag/:userId', authMiddleware, async (req, res) => {
+    try {
+        const { userId } = req.params;
+        await Player.findOneAndUpdate(
+            { userId },
+            { manuallyAdded: true, transferCompleted: false }
         );
         res.json({ success: true });
     } catch (error) {
