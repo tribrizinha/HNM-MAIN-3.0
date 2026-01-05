@@ -1194,6 +1194,26 @@ app.post('/setManualFlag/:userId', authMiddleware, async (req, res) => {
     }
 });
 
+app.post('/completeTransfer/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        
+        // Deletar o jogador do banco após transferência completada
+        const result = await Player.findOneAndDelete({ userId });
+        
+        if (!result) {
+            return res.status(404).json({ success: false, message: 'Jogador não encontrado' });
+        }
+        
+        res.json({ 
+            success: true, 
+            message: 'Transferência completa. Jogador removido do servidor.'
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 // Iniciar servidor
 const server = app.listen(PORT, '0.0.0.0', () => {
     console.log('Servidor HNM rodando na porta', PORT);
