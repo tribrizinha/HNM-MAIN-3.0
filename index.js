@@ -4,7 +4,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '5mb' })); // Aumentado para suportar tabelas grandes de personagens
 
 // Banco de dados em memória
 let playerDatabase = {};
@@ -14,37 +14,44 @@ app.get('/', (req, res) => {
     res.send(`
         <html>
         <head>
-            <title>Heroes Data Transfer</title>
+            <title>Heroes Data Transfer - Panel</title>
             <style>
-                body { font-family: Arial; padding: 20px; background: #f0f0f0; }
-                .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-                h1 { color: #333; }
-                input, textarea, button { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; }
-                button { background: #4CAF50; color: white; border: none; cursor: pointer; font-weight: bold; }
-                button:hover { background: #45a049; }
-                .success { color: green; font-weight: bold; }
-                .error { color: red; font-weight: bold; }
+                body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; background: #f4f7f6; color: #333; }
+                .container { max-width: 900px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+                h1 { color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+                h2 { color: #34495e; margin-top: 30px; }
+                input, textarea, button { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 14px; }
+                textarea { font-family: monospace; background: #fdfdfd; }
+                button { background: #3498db; color: white; border: none; cursor: pointer; font-weight: bold; transition: background 0.3s; }
+                button:hover { background: #2980b9; }
+                .success { color: #27ae60; background: #e8f6ef; padding: 10px; border-radius: 5px; font-weight: bold; }
+                .error { color: #c0392b; background: #f9ebea; padding: 10px; border-radius: 5px; font-weight: bold; }
                 ul { list-style: none; padding: 0; }
-                li { background: #eee; margin: 5px 0; padding: 10px; border-radius: 5px; }
+                li { background: #fff; margin: 8px 0; padding: 15px; border-radius: 8px; border-left: 5px solid #3498db; box-shadow: 0 2px 5px rgba(0,0,0,0.05); display: flex; justify-content: space-between; align-items: center; }
+                .id-label { font-weight: bold; color: #2c3e50; }
+                .stats { font-size: 12px; color: #7f8c8d; }
             </style>
         </head>
         <body>
             <div class="container">
-                <h1>🎮 Heroes Data Transfer</h1>
-                <p>Cadastre os IDs dos jogadores para permitir a transferência.</p>
+                <h1>🎮 Heroes: Online World - Transfer System</h1>
+                <p>Os jogadores que entrarem no jogo serão registrados aqui automaticamente.</p>
                 
-                <h2>Adicionar Jogador</h2>
+                <h2>Adicionar/Editar Manualmente</h2>
                 <form id="addForm">
-                    <input type="text" id="userId" placeholder="User ID do Roblox (ex: 123456)" required>
-                    <input type="number" id="coins" placeholder="Quantidade de Coins" required>
-                    <input type="number" id="level" placeholder="Level do Jogador" required>
-                    <textarea id="extraData" rows="3" placeholder='Dados Extras (JSON): {"Wins": 5}'></textarea>
-                    <button type="submit">Adicionar ao Banco de Dados</button>
+                    <input type="text" id="userId" placeholder="Roblox User ID (ex: 705255178)" required>
+                    <textarea id="fullData" rows="6" placeholder='Cole o JSON completo aqui ou apenas o básico:
+{
+  "Coins": 50000,
+  "Characters": ["HarryWizard"],
+  "HasTransferred": false
+}'></textarea>
+                    <button type="submit">Salvar no Banco de Dados</button>
                 </form>
                 <div id="message"></div>
                 
-                <h2>Jogadores na Fila</h2>
-                <button onclick="loadPlayers()">Atualizar Lista</button>
+                <h2>Jogadores Registrados (Backup)</h2>
+                <button onclick="loadPlayers()" style="background: #95a5a6;">🔄 Atualizar Lista</button>
                 <div id="playerList"></div>
             </div>
             
@@ -52,14 +59,14 @@ app.get('/', (req, res) => {
                 document.getElementById('addForm').addEventListener('submit', async (e) => {
                     e.preventDefault();
                     const userId = document.getElementById('userId').value;
-                    const coins = parseInt(document.getElementById('coins').value);
-                    const level = parseInt(document.getElementById('level').value);
-                    const extraData = document.getElementById('extraData').value;
+                    const fullDataRaw = document.getElementById('fullData').value;
                     
-                    let data = { Coins: coins, Level: level, HasTransferred: false };
-                    if (extraData.trim()) {
-                        try { Object.assign(data, JSON.parse(extraData)); } 
-                        catch (e) { alert('Erro no JSON extra!'); return; }
+                    let data;
+                    try {
+                        data = JSON.parse(fullDataRaw);
+                    } catch (err) {
+                        alert('Erro: O campo de dados precisa ser um JSON válido!');
+                        return;
                     }
                     
                     const response = await fetch('/addPlayerData', {
@@ -71,11 +78,10 @@ app.get('/', (req, res) => {
                     const result = await response.json();
                     const msg = document.getElementById('message');
                     if (result.success) {
-                        msg.innerHTML = '<p class="success">✅ Adicionado!</p>';
-                        document.getElementById('addForm').reset();
+                        msg.innerHTML = '<p class="success">✅ Dados salvos com sucesso para o ID ' + userId + '!</p>';
                         loadPlayers();
                     } else {
-                        msg.innerHTML = '<p class="error">❌ Erro: ' + result.error + '</p>';
+                        msg.innerHTML = '<p class="error">❌ Erro ao salvar: ' + result.error + '</p>';
                     }
                 });
                 
@@ -83,8 +89,19 @@ app.get('/', (req, res) => {
                     const response = await fetch('/listPlayers');
                     const result = await response.json();
                     const list = document.getElementById('playerList');
-                    list.innerHTML = result.players.length === 0 ? '<p>Vazio</p>' : 
-                        '<ul>' + result.players.map(p => '<li>ID: ' + p + '</li>').join('') + '</ul>';
+                    
+                    if (Object.keys(result.players).length === 0) {
+                        list.innerHTML = '<p style="text-align:center; color:#999;">Nenhum jogador registrado ainda.</p>';
+                        return;
+                    }
+
+                    list.innerHTML = '<ul>' + Object.keys(result.players).map(id => {
+                        const p = result.players[id];
+                        return '<li>' + 
+                               '<div><span class="id-label">ID: ' + id + '</span><br>' +
+                               '<span class="stats">Coins: ' + (p.Coins || 0) + ' | Personagens: ' + (p.Characters ? p.Characters.length : 0) + '</span></div>' +
+                               '</li>';
+                    }).join('') + '</ul>';
                 }
                 loadPlayers();
             </script>
@@ -93,7 +110,7 @@ app.get('/', (req, res) => {
     `);
 });
 
-// Endpoint de Busca (Roblox)
+// Endpoint de Busca (Chamado pelo Roblox TransferService)
 app.get('/getOrFetchPlayerData', (req, res) => {
     const userId = req.query.userId;
     const playerData = playerDatabase[userId];
@@ -102,21 +119,23 @@ app.get('/getOrFetchPlayerData', (req, res) => {
         return res.status(404).json({ success: false, error: "Player not found" });
     }
     
+    console.log(`Roblox solicitou dados do ID: ${userId}`);
     res.json({ success: true, data: { Data: playerData } });
 });
 
-// Endpoint de Cadastro (Painel)
+// Endpoint de Cadastro (Chamado pelo Roblox DataService ou pelo Painel)
 app.post('/addPlayerData', (req, res) => {
     const { userId, data } = req.body;
-    if (!userId || !data) return res.status(400).json({ success: false, error: "Missing data" });
+    if (!userId || !data) return res.status(400).json({ success: false, error: "Missing userId or data" });
     
     playerDatabase[userId] = data;
+    console.log(`Backup realizado para o ID: ${userId}`);
     res.json({ success: true });
 });
 
-// Listagem
+// Listagem Completa para o Painel
 app.get('/listPlayers', (req, res) => {
-    res.json({ success: true, players: Object.keys(playerDatabase) });
+    res.json({ success: true, players: playerDatabase });
 });
 
-app.listen(PORT, () => console.log(`Rodando na porta ${PORT}`));
+app.listen(PORT, () => console.log(`Servidor Heroes rodando na porta ${PORT}`));
