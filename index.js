@@ -527,6 +527,27 @@ app.get('/', (req, res) => {
             </div>
         </div>
 
+        <div class="players-section" style="margin-bottom: 30px;">
+            <div class="section-title">➕ Adicionar Jogador</div>
+            <div style="background: rgba(30, 30, 30, 0.6); border: 1px solid rgba(0,255,136,0.2); border-radius: 12px; padding: 25px;">
+                <div class="edit-section">
+                    <label class="edit-label">User ID do Roblox</label>
+                    <input type="text" id="addUserId" class="edit-input" placeholder="Ex: 123456789">
+                </div>
+                <div class="edit-section">
+                    <label class="edit-label">Coins</label>
+                    <input type="number" id="addCoins" class="edit-input" placeholder="0" value="0">
+                </div>
+                <div class="edit-section">
+                    <label class="edit-label">Characters (JSON Array)</label>
+                    <textarea id="addCharacters" class="edit-input edit-textarea" placeholder='["Character1", "Character2"]'>[]</textarea>
+                </div>
+                <button class="edit-action-btn save" style="width: 100%;" onclick="addNewPlayer()">
+                    ➕ Adicionar Jogador
+                </button>
+            </div>
+        </div>
+
         <div class="players-section">
             <div class="section-title">👥 Jogadores Registrados</div>
             <div id="playerList" class="player-list">
@@ -788,6 +809,103 @@ app.get('/', (req, res) => {
             }
         }
 
+        async function addNewPlayer() {
+            if (!savedPassword) return;
+
+            const userId = document.getElementById('addUserId').value.trim();
+            const coins = parseInt(document.getElementById('addCoins').value) || 0;
+            const charactersText = document.getElementById('addCharacters').value.trim();
+
+            if (!userId) {
+                alert('Por favor, digite o User ID do Roblox!');
+                return;
+            }
+
+            let characters;
+            try {
+                characters = charactersText ? JSON.parse(charactersText) : [];
+                if (!Array.isArray(characters)) {
+                    alert('Characters deve ser um array JSON válido!');
+                    return;
+                }
+            } catch (e) {
+                alert('Erro ao processar Characters: JSON inválido!');
+                return;
+            }
+
+            try {
+                // Buscar username do Roblox
+                let username = "Desconhecido";
+                try {
+                    const userResponse = await fetch(\`https://users.roblox.com/v1/users/\${userId}\`);
+                    if (userResponse.ok) {
+                        const userData = await userResponse.json();
+                        username = userData.name || "Desconhecido";
+                    }
+                } catch (e) {
+                    console.log('Não foi possível buscar username');
+                }
+
+                // Criar estrutura completa do profile
+                const fullData = {
+                    Characters: characters,
+                    Favorited: [],
+                    FavoritedCharacters: [],
+                    Coins: coins,
+                    ActiveBoost: 0,
+                    LastTransferCheck: null,
+                    LastJoinTime: null,
+                    RedeemedCodes: [],
+                    RedeemedCompensation: [],
+                    RedeemedStarterCoins: false,
+                    HnmNewera2: false,
+                    QuestCollections: {
+                        Crowns: 0,
+                        PrincessCrowns: 0,
+                        ZeusBolts: 0,
+                        MadisonSkulls: 0,
+                        LokiRose: 0,
+                        DJCoins: 0,
+                        HarryUltronKills: 0,
+                        FortuneTellerUltronKills: 0,
+                        KingKills: 0,
+                        ArcherKills: 0,
+                        JavelinKills: 0,
+                        BeeCrowns: 0,
+                        Pyramids: 0,
+                    }
+                };
+
+                const response = await fetch('/addPlayerData', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-password': savedPassword
+                    },
+                    body: JSON.stringify({
+                        userId: userId,
+                        username: username,
+                        data: fullData
+                    })
+                });
+
+                if (response.ok) {
+                    alert(\`Jogador \${username} adicionado com sucesso!\`);
+                    document.getElementById('addUserId').value = '';
+                    document.getElementById('addCoins').value = '0';
+                    document.getElementById('addCharacters').value = '[]';
+                    await loadPlayers();
+                    currentPage = 1;
+                    renderPlayers();
+                } else {
+                    alert('Erro ao adicionar jogador');
+                }
+            } catch (error) {
+                console.error('Erro:', error);
+                alert('Erro ao adicionar jogador');
+            }
+        }
+
         async function confirmDelete() {
             if (!playerToDelete || !savedPassword) return;
 
@@ -821,7 +939,7 @@ app.get('/', (req, res) => {
 });
 
 // Rotas
-app.post('/addPlayerData', async (req, res) => {
+app.post('/addPlayerData', authMiddleware, async (req, res) => {
     const { userId, username, data } = req.body;
     if (!userId) {
         return res.status(400).json({ success: false, message: 'userId obrigatório' });
@@ -876,6 +994,23 @@ app.delete('/deletePlayer/:userId', authMiddleware, async (req, res) => {
         }
         
         res.json({ success: true, message: 'Jogador deletado com sucesso' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.post('/updatePlayerData', authMiddleware, async (req, res) => {
+    const { userId, data } = req.body;
+    if (!userId) {
+        return res.status(400).json({ success: false, message: 'userId obrigatório' });
+    }
+    try {
+        await Player.findOneAndUpdate(
+            { userId },
+            { data, lastSeen: Date.now() },
+            { upsert: false }
+        );
+        res.json({ success: true });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
