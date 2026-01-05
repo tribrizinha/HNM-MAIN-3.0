@@ -83,7 +83,3 @@ app.get('/listPlayers', async (req, res) => {
 });
 
 app.listen(PORT, () => console.log("Servidor rodando!"));
-
-
-
-
