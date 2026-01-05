@@ -34,7 +34,7 @@ app.get('/', (req, res) => {
         </head>
         <body>
             <div class="container">
-                <h1>🎮 Heroes: Online World - Transfer System</h1>
+                <h1>🎮 HNM - Transfer System</h1>
                 <p>Os jogadores que entrarem no jogo serão registrados aqui automaticamente.</p>
                 
                 <h2>Adicionar/Editar Manualmente</h2>
@@ -139,3 +139,4 @@ app.get('/listPlayers', (req, res) => {
 });
 
 app.listen(PORT, () => console.log(`Servidor Heroes rodando na porta ${PORT}`));
+
