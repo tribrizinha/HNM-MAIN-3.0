@@ -211,6 +211,7 @@ app.get('/', (req, res) => {
             display: flex;
             justify-content: space-between;
             align-items: center;
+            gap: 20px;
         }
         .player-main {
             display: flex;
@@ -225,6 +226,12 @@ app.get('/', (req, res) => {
         .player-id {
             font-size: 12px;
             color: #666;
+        }
+        .player-actions {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-shrink: 0;
         }
         .status-tag {
             padding: 8px 18px;
@@ -242,10 +249,112 @@ app.get('/', (req, res) => {
             color: #ff4444;
             border: 1px solid rgba(255, 68, 68, 0.3);
         }
+        .delete-btn {
+            background: rgba(255, 50, 50, 0.3);
+            border: 2px solid rgba(255, 50, 50, 0.6);
+            color: #ff6666;
+            padding: 10px 18px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 700;
+            transition: all 0.3s;
+            white-space: nowrap;
+        }
+        .delete-btn:hover {
+            background: rgba(255, 50, 50, 0.5);
+            border-color: #ff5555;
+            color: #fff;
+        }
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin-top: 25px;
+        }
+        .pagination-btn {
+            background: rgba(30, 30, 30, 0.8);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        .pagination-btn:hover:not(:disabled) {
+            background: rgba(0, 255, 136, 0.2);
+            border-color: #00ff88;
+        }
+        .pagination-btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+        .pagination-info {
+            color: #888;
+            font-size: 14px;
+        }
         .loading {
             text-align: center;
             padding: 50px;
             color: #666;
+        }
+        .confirm-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+        }
+        .confirm-modal.show {
+            display: flex;
+        }
+        .confirm-box {
+            background: rgba(20, 20, 20, 0.95);
+            border: 1px solid rgba(255, 50, 50, 0.5);
+            border-radius: 15px;
+            padding: 30px;
+            max-width: 400px;
+            width: 90%;
+        }
+        .confirm-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: #ff5555;
+            margin-bottom: 15px;
+        }
+        .confirm-text {
+            color: #ccc;
+            margin-bottom: 25px;
+            line-height: 1.5;
+        }
+        .confirm-actions {
+            display: flex;
+            gap: 10px;
+        }
+        .confirm-btn {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .confirm-btn.cancel {
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+        }
+        .confirm-btn.delete {
+            background: linear-gradient(135deg, #ff4444, #cc0000);
+            color: #fff;
         }
     </style>
 </head>
@@ -259,6 +368,17 @@ app.get('/', (req, res) => {
                 <button type="submit" class="login-btn">Entrar</button>
                 <div class="error-message" id="errorMessage">Senha incorreta!</div>
             </form>
+        </div>
+    </div>
+
+    <div class="confirm-modal" id="confirmModal">
+        <div class="confirm-box">
+            <div class="confirm-title">⚠️ Confirmar Exclusão</div>
+            <div class="confirm-text" id="confirmText">Tem certeza que deseja deletar este jogador?</div>
+            <div class="confirm-actions">
+                <button class="confirm-btn cancel" onclick="closeConfirmModal()">Cancelar</button>
+                <button class="confirm-btn delete" onclick="confirmDelete()">Deletar</button>
+            </div>
         </div>
     </div>
 
@@ -290,11 +410,20 @@ app.get('/', (req, res) => {
             <div id="playerList" class="player-list">
                 <div class="loading">Carregando...</div>
             </div>
+            <div class="pagination">
+                <button class="pagination-btn" id="prevBtn" onclick="prevPage()" disabled>← Anterior</button>
+                <span class="pagination-info" id="pageInfo">Página 1</span>
+                <button class="pagination-btn" id="nextBtn" onclick="nextPage()" disabled>Próxima →</button>
+            </div>
         </div>
     </div>
 
     <script>
         let savedPassword = sessionStorage.getItem('hnmPassword');
+        let currentPage = 1;
+        const playersPerPage = 10;
+        let allPlayers = [];
+        let playerToDelete = null;
 
         if (savedPassword) {
             verifyAndLogin(savedPassword);
@@ -349,42 +478,126 @@ app.get('/', (req, res) => {
                 }
 
                 const data = await response.json();
-                const players = data.players || [];
+                allPlayers = data.players || [];
                 
-                const onlinePlayers = players.filter(p => 
+                const onlinePlayers = allPlayers.filter(p => 
                     (Date.now() - new Date(p.lastSeen).getTime()) < 60000
                 );
                 
-                document.getElementById('totalPlayers').textContent = players.length;
+                document.getElementById('totalPlayers').textContent = allPlayers.length;
                 document.getElementById('onlinePlayers').textContent = onlinePlayers.length;
-                document.getElementById('offlinePlayers').textContent = players.length - onlinePlayers.length;
+                document.getElementById('offlinePlayers').textContent = allPlayers.length - onlinePlayers.length;
 
-                const list = document.getElementById('playerList');
+                renderPlayers();
+            } catch (error) {
+                console.error('Erro:', error);
+            }
+        }
+
+        function renderPlayers() {
+            const list = document.getElementById('playerList');
+            
+            if (allPlayers.length === 0) {
+                list.innerHTML = '<div class="loading">Nenhum jogador registrado.</div>';
+                updatePagination();
+                return;
+            }
+
+            const startIndex = (currentPage - 1) * playersPerPage;
+            const endIndex = startIndex + playersPerPage;
+            const playersToShow = allPlayers.slice(startIndex, endIndex);
+
+            list.innerHTML = playersToShow.map((player) => {
+                const isOnline = (Date.now() - new Date(player.lastSeen).getTime()) < 60000;
                 
-                if (players.length === 0) {
-                    list.innerHTML = '<div class="loading">Nenhum jogador registrado.</div>';
-                    return;
-                }
-
-                list.innerHTML = players.map((player) => {
-                    const isOnline = (Date.now() - new Date(player.lastSeen).getTime()) < 60000;
-                    
-                    return \`
-                        <div class="player-item">
-                            <div class="player-main">
-                                <div>
-                                    <div class="player-name">\${player.username}</div>
-                                    <div class="player-id">ID: \${player.userId}</div>
-                                </div>
+                return \`
+                    <div class="player-item">
+                        <div class="player-main">
+                            <div>
+                                <div class="player-name">\${player.username}</div>
+                                <div class="player-id">ID: \${player.userId}</div>
                             </div>
+                        </div>
+                        <div class="player-actions">
                             <span class="status-tag \${isOnline ? 'online' : 'offline'}">
                                 \${isOnline ? 'ONLINE' : 'OFFLINE'}
                             </span>
+                            <button class="delete-btn" onclick="openConfirmModal('\${player.userId}', '\${player.username}')">
+                                🗑️ Deletar
+                            </button>
                         </div>
-                    \`;
-                }).join('');
+                    </div>
+                \`;
+            }).join('');
+
+            updatePagination();
+        }
+
+        function updatePagination() {
+            const totalPages = Math.ceil(allPlayers.length / playersPerPage);
+            
+            document.getElementById('prevBtn').disabled = currentPage === 1;
+            document.getElementById('nextBtn').disabled = currentPage >= totalPages || totalPages === 0;
+            
+            if (totalPages === 0) {
+                document.getElementById('pageInfo').textContent = 'Sem jogadores';
+            } else {
+                document.getElementById('pageInfo').textContent = \`Página \${currentPage} de \${totalPages}\`;
+            }
+        }
+
+        function nextPage() {
+            const totalPages = Math.ceil(allPlayers.length / playersPerPage);
+            if (currentPage < totalPages) {
+                currentPage++;
+                renderPlayers();
+            }
+        }
+
+        function prevPage() {
+            if (currentPage > 1) {
+                currentPage--;
+                renderPlayers();
+            }
+        }
+
+        function openConfirmModal(userId, username) {
+            playerToDelete = userId;
+            document.getElementById('confirmText').textContent = 
+                \`Tem certeza que deseja deletar o jogador "\${username}" (ID: \${userId})? Esta ação não pode ser desfeita.\`;
+            document.getElementById('confirmModal').classList.add('show');
+        }
+
+        function closeConfirmModal() {
+            playerToDelete = null;
+            document.getElementById('confirmModal').classList.remove('show');
+        }
+
+        async function confirmDelete() {
+            if (!playerToDelete || !savedPassword) return;
+
+            try {
+                const response = await fetch(\`/deletePlayer/\${playerToDelete}\`, {
+                    method: 'DELETE',
+                    headers: { 'x-password': savedPassword }
+                });
+
+                if (response.ok) {
+                    closeConfirmModal();
+                    await loadPlayers();
+                    
+                    // Ajustar página se necessário
+                    const totalPages = Math.ceil(allPlayers.length / playersPerPage);
+                    if (currentPage > totalPages && currentPage > 1) {
+                        currentPage = totalPages;
+                    }
+                    renderPlayers();
+                } else {
+                    alert('Erro ao deletar jogador');
+                }
             } catch (error) {
                 console.error('Erro:', error);
+                alert('Erro ao deletar jogador');
             }
         }
     </script>
@@ -433,6 +646,21 @@ app.get('/listPlayers', authMiddleware, async (req, res) => {
             .select('userId username thumbnailUrl lastSeen')
             .sort({ lastSeen: -1 });
         res.json({ success: true, players });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.delete('/deletePlayer/:userId', authMiddleware, async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const result = await Player.findOneAndDelete({ userId });
+        
+        if (!result) {
+            return res.status(404).json({ success: false, message: 'Jogador não encontrado' });
+        }
+        
+        res.json({ success: true, message: 'Jogador deletado com sucesso' });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
