@@ -266,6 +266,106 @@ app.get('/', (req, res) => {
             border-color: #ff5555;
             color: #fff;
         }
+        .edit-btn {
+            background: rgba(0, 150, 255, 0.3);
+            border: 2px solid rgba(0, 150, 255, 0.6);
+            color: #66b3ff;
+            padding: 10px 18px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 700;
+            transition: all 0.3s;
+            white-space: nowrap;
+        }
+        .edit-btn:hover {
+            background: rgba(0, 150, 255, 0.5);
+            border-color: #66b3ff;
+            color: #fff;
+        }
+        .edit-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+            overflow-y: auto;
+        }
+        .edit-modal.show {
+            display: flex;
+        }
+        .edit-box {
+            background: rgba(20, 20, 20, 0.95);
+            border: 1px solid rgba(0, 255, 136, 0.5);
+            border-radius: 15px;
+            padding: 30px;
+            max-width: 600px;
+            width: 90%;
+            margin: 20px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        .edit-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: #00ff88;
+            margin-bottom: 20px;
+        }
+        .edit-section {
+            margin-bottom: 25px;
+        }
+        .edit-label {
+            color: #888;
+            font-size: 14px;
+            margin-bottom: 8px;
+            display: block;
+            font-weight: 600;
+        }
+        .edit-input {
+            width: 100%;
+            padding: 12px 15px;
+            background: rgba(30, 30, 30, 0.8);
+            border: 2px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            color: #fff;
+            font-size: 15px;
+            font-family: 'Courier New', monospace;
+        }
+        .edit-input:focus {
+            outline: none;
+            border-color: #00ff88;
+        }
+        .edit-textarea {
+            min-height: 200px;
+            resize: vertical;
+        }
+        .edit-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 25px;
+        }
+        .edit-action-btn {
+            flex: 1;
+            padding: 14px;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .edit-action-btn.cancel {
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+        }
+        .edit-action-btn.save {
+            background: linear-gradient(135deg, #00ff88, #00cc6a);
+            color: #000;
+        }
         .pagination {
             display: flex;
             justify-content: center;
@@ -371,6 +471,28 @@ app.get('/', (req, res) => {
         </div>
     </div>
 
+    <div class="edit-modal" id="editModal">
+        <div class="edit-box">
+            <div class="edit-title">✏️ Editar Jogador</div>
+            <div class="edit-section">
+                <label class="edit-label">Jogador</label>
+                <input type="text" id="editPlayerName" class="edit-input" readonly>
+            </div>
+            <div class="edit-section">
+                <label class="edit-label">Coins</label>
+                <input type="number" id="editCoins" class="edit-input" placeholder="0">
+            </div>
+            <div class="edit-section">
+                <label class="edit-label">Characters (JSON Array)</label>
+                <textarea id="editCharacters" class="edit-input edit-textarea" placeholder='["Character1", "Character2"]'></textarea>
+            </div>
+            <div class="edit-actions">
+                <button class="edit-action-btn cancel" onclick="closeEditModal()">Cancelar</button>
+                <button class="edit-action-btn save" onclick="savePlayerData()">Salvar</button>
+            </div>
+        </div>
+    </div>
+
     <div class="confirm-modal" id="confirmModal">
         <div class="confirm-box">
             <div class="confirm-title">⚠️ Confirmar Exclusão</div>
@@ -424,6 +546,7 @@ app.get('/', (req, res) => {
         const playersPerPage = 10;
         let allPlayers = [];
         let playerToDelete = null;
+        let playerToEdit = null;
 
         if (savedPassword) {
             verifyAndLogin(savedPassword);
@@ -522,6 +645,9 @@ app.get('/', (req, res) => {
                             <span class="status-tag \${isOnline ? 'online' : 'offline'}">
                                 \${isOnline ? 'ONLINE' : 'OFFLINE'}
                             </span>
+                            <button class="edit-btn" onclick="openEditModal('\${player.userId}', '\${player.username}')">
+                                ✏️ Editar
+                            </button>
                             <button class="delete-btn" onclick="openConfirmModal('\${player.userId}', '\${player.username}')">
                                 🗑️ Deletar
                             </button>
@@ -571,6 +697,95 @@ app.get('/', (req, res) => {
         function closeConfirmModal() {
             playerToDelete = null;
             document.getElementById('confirmModal').classList.remove('show');
+        }
+
+        async function openEditModal(userId, username) {
+            playerToEdit = userId;
+            
+            try {
+                const response = await fetch(\`/getOrFetchPlayerData?userId=\${userId}\`, {
+                    headers: { 'x-password': savedPassword }
+                });
+
+                if (!response.ok) {
+                    alert('Erro ao carregar dados do jogador');
+                    return;
+                }
+
+                const result = await response.json();
+                const playerData = result.data?.Data || {};
+                
+                document.getElementById('editPlayerName').value = \`\${username} (ID: \${userId})\`;
+                document.getElementById('editCoins').value = playerData.Coins || 0;
+                document.getElementById('editCharacters').value = JSON.stringify(playerData.Characters || [], null, 2);
+                
+                document.getElementById('editModal').classList.add('show');
+            } catch (error) {
+                console.error('Erro:', error);
+                alert('Erro ao carregar dados do jogador');
+            }
+        }
+
+        function closeEditModal() {
+            playerToEdit = null;
+            document.getElementById('editModal').classList.remove('show');
+        }
+
+        async function savePlayerData() {
+            if (!playerToEdit || !savedPassword) return;
+
+            try {
+                const coins = parseInt(document.getElementById('editCoins').value) || 0;
+                const charactersText = document.getElementById('editCharacters').value.trim();
+                
+                let characters;
+                try {
+                    characters = charactersText ? JSON.parse(charactersText) : [];
+                    if (!Array.isArray(characters)) {
+                        alert('Characters deve ser um array JSON válido!');
+                        return;
+                    }
+                } catch (e) {
+                    alert('Erro ao processar Characters: JSON inválido!');
+                    return;
+                }
+
+                // Buscar dados atuais
+                const getResponse = await fetch(\`/getOrFetchPlayerData?userId=\${playerToEdit}\`, {
+                    headers: { 'x-password': savedPassword }
+                });
+                
+                const currentData = await getResponse.json();
+                const playerData = currentData.data?.Data || {};
+                
+                // Atualizar apenas Characters e Coins
+                playerData.Characters = characters;
+                playerData.Coins = coins;
+
+                // Salvar
+                const response = await fetch('/updatePlayerData', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-password': savedPassword
+                    },
+                    body: JSON.stringify({
+                        userId: playerToEdit,
+                        data: playerData
+                    })
+                });
+
+                if (response.ok) {
+                    closeEditModal();
+                    alert('Dados salvos com sucesso!');
+                    await loadPlayers();
+                } else {
+                    alert('Erro ao salvar dados');
+                }
+            } catch (error) {
+                console.error('Erro:', error);
+                alert('Erro ao salvar dados do jogador');
+            }
         }
 
         async function confirmDelete() {
@@ -624,7 +839,7 @@ app.post('/addPlayerData', async (req, res) => {
     }
 });
 
-app.get('/getOrFetchPlayerData', async (req, res) => {
+app.get('/getOrFetchPlayerData', authMiddleware, async (req, res) => {
     const userId = req.query.userId;
     if (!userId) {
         return res.status(400).json({ success: false, message: 'userId obrigatório' });
