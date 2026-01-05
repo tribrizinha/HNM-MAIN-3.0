@@ -1,115 +1,112 @@
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
-const bcrypt = require('bcrypt');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Configurações
-const ADMIN_PASSWORD_HASH = '$2b$10$rKvqQxH5LW5KF.YxJ4WXEO8mYB3p5EqX7xGNVhF3qWLxVvKZBHxJa'; // senha: hnm170720
 const MONGO_URI = "mongodb+srv://tribridzinha17072010:ana17072010@tribridzinha17072010.n9itw5i.mongodb.net/?appName=Tribridzinha17072010";
 
 app.use(cors());
 app.use(express.json({ limit: '5mb' }));
 
-// Middleware de Autenticação
-const authMiddleware = async (req, res, next) => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ success: false, message: 'Senha necessária' });
-    }
-    const password = authHeader.substring(7);
-    const match = await bcrypt.compare(password, ADMIN_PASSWORD_HASH);
-    if (match) return next();
-    res.status(401).json({ success: false, message: 'Senha incorreta' });
-};
-
-// Banco de Dados
+// Banco de Dados atualizado para incluir Nick e Status
 const playerSchema = new mongoose.Schema({
     userId: { type: String, required: true, unique: true },
-    username: { type: String, default: "Desconhecido" },
+    username: { type: String, default: "Desconhecido" }, // Nick do jogador
     data: Object,
-    lastSeen: { type: Date, default: Date.now }
+    lastSeen: { type: Date, default: Date.now } // Para saber se está Online
 });
+
 const Player = mongoose.model('Player', playerSchema);
 
-mongoose.connect(MONGO_URI).then(() => console.log("✅ MongoDB Conectado"));
+mongoose.connect(MONGO_URI)
+    .then(() => console.log("Conectado ao MongoDB! ✅"))
+    .catch(err => console.error("Erro MongoDB:", err));
 
-// Rotas API
-app.post('/addPlayerData', async (req, res) => {
-    const { userId, username, data } = req.body;
-    try {
-        await Player.findOneAndUpdate({ userId }, { username, data, lastSeen: Date.now() }, { upsert: true });
-        res.json({ success: true });
-    } catch (e) { res.status(500).json({ success: false }); }
-});
-
-app.get('/listPlayers', authMiddleware, async (req, res) => {
-    try {
-        const players = await Player.find().sort({ lastSeen: -1 });
-        res.json({ success: true, players });
-    } catch (e) { res.status(500).json({ success: false }); }
-});
-
-// Página Inicial (Dashboard)
+// Painel Visual com Nick e Status On/Off
 app.get('/', (req, res) => {
     res.send(`
-        <!DOCTYPE html>
         <html>
         <head>
-            <title>HNM Panel</title>
-            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>HNM Transfer System</title>
             <style>
-                body { font-family: 'Segoe UI', sans-serif; background: #0a0a0b; color: white; display: flex; justify-content: center; padding: 20px; }
-                .container { width: 100%; max-width: 800px; background: #141417; padding: 30px; border-radius: 15px; border: 1px solid #222; }
-                .player-card { background: #1c1c21; padding: 15px; margin: 10px 0; border-radius: 10px; display: flex; justify-content: space-between; align-items: center; border-left: 4px solid #00ff88; }
-                .online { color: #00ff88; font-weight: bold; font-size: 12px; }
-                .offline { color: #ff4444; font-size: 12px; }
-                input { width: 100%; padding: 12px; margin-bottom: 10px; border-radius: 8px; border: none; background: #25252b; color: white; }
-                button { width: 100%; padding: 12px; border-radius: 8px; border: none; background: #00ff88; color: black; font-weight: bold; cursor: pointer; }
-                #dashboard { display: none; }
+                body { font-family: 'Segoe UI', sans-serif; padding: 40px; background: #0f0f0f; color: white; text-align: center; }
+                .card { background: #1a1a1a; padding: 25px; border-radius: 20px; box-shadow: 0 15px 35px rgba(0,0,0,0.7); max-width: 600px; margin: auto; border: 1px solid #333; }
+                h1 { color: #00ff88; margin-bottom: 5px; }
+                .status-server { padding: 5px 15px; border-radius: 50px; background: #2e7d32; font-size: 12px; display: inline-block; margin-bottom: 25px; }
+                .player-item { background: #262626; margin: 10px 0; padding: 15px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; border-left: 5px solid #00ff88; }
+                .nick { font-weight: bold; color: #fff; font-size: 16px; }
+                .id { color: #888; font-size: 12px; }
+                .tag { padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: bold; text-transform: uppercase; }
+                .on { background: #00ff88; color: #000; }
+                .off { background: #ff4444; color: #fff; }
             </style>
         </head>
         <body>
-            <div class="container">
-                <div id="loginSection">
-                    <h2>🔐 HNM Login</h2>
-                    <input type="password" id="pass" placeholder="Digite a senha admin">
-                    <button onclick="login()">Acessar Painel</button>
-                </div>
-                <div id="dashboard">
-                    <h2>👥 Jogadores Registrados</h2>
-                    <div id="playerList">Carregando...</div>
-                </div>
+            <div class="card">
+                <h1>🎮 Heroes: New Multiverse</h1>
+                <div class="status-server">SISTEMA DE TRANSFERÊNCIA ATIVO</div>
+                <div id="list">Carregando jogadores...</div>
             </div>
             <script>
-                let token = "";
-                async function login() {
-                    const p = document.getElementById('pass').value;
-                    const r = await fetch('/listPlayers', { headers: {'Authorization': 'Bearer ' + p} });
-                    if(r.ok) {
-                        token = p;
-                        document.getElementById('loginSection').style.display = 'none';
-                        document.getElementById('dashboard').style.display = 'block';
-                        load();
-                        setInterval(load, 5000);
-                    } else { alert("Senha Incorreta!"); }
-                }
                 async function load() {
-                    const r = await fetch('/listPlayers', { headers: {'Authorization': 'Bearer ' + token} });
-                    const d = await r.json();
-                    document.getElementById('playerList').innerHTML = d.players.map(p => {
-                        const isOnline = (Date.now() - new Date(p.lastSeen).getTime()) < 60000;
-                        return \`<div class="player-card">
-                            <div><strong>\${p.username}</strong><br><small>ID: \${p.userId}</small></div>
-                            <div class="\${isOnline ? 'online' : 'offline'}">\${isOnline ? '● ONLINE' : '○ OFFLINE'}</div>
-                        </div>\`;
-                    }).join('');
+                    try {
+                        const r = await fetch('/listPlayers');
+                        const d = await r.json();
+                        const list = document.getElementById('list');
+                        
+                        if (d.players.length === 0) {
+                            list.innerHTML = '<p style="color: #666;">Nenhum jogador registrado.</p>';
+                            return;
+                        }
+
+                        list.innerHTML = d.players.map(p => {
+                            const isOnline = (Date.now() - new Date(p.lastSeen).getTime()) < 60000; // Online se atualizou nos últimos 60s
+                            return \`
+                                <div class="player-item">
+                                    <div style="text-align: left">
+                                        <div class="nick">\${p.username}</div>
+                                        <div class="id">ID: \${p.userId}</div>
+                                    </div>
+                                    <span class="tag \${isOnline ? 'on' : 'off'}">\${isOnline ? 'ONLINE' : 'OFFLINE'}</span>
+                                </div>
+                            \`;
+                        }).join('');
+                    } catch (e) { document.getElementById('list').innerHTML = "Erro ao carregar."; }
                 }
+                load();
+                setInterval(load, 5000); // Atualiza a lista a cada 5 segundos
             </script>
         </body>
         </html>
     `);
 });
 
-app.listen(PORT, () => console.log("🚀 Servidor rodando na porta " + PORT));
+// Roblox envia: { "userId": "123", "username": "Player1", "data": {...} }
+app.post('/addPlayerData', async (req, res) => {
+    const { userId, username, data } = req.body;
+    try {
+        await Player.findOneAndUpdate(
+            { userId }, 
+            { username, data, lastSeen: Date.now() }, 
+            { upsert: true }
+        );
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ success: false }); }
+});
+
+app.get('/getOrFetchPlayerData', async (req, res) => {
+    const userId = req.query.userId;
+    try {
+        const p = await Player.findOne({ userId });
+        if (!p) return res.status(404).json({ success: false });
+        res.json({ success: true, data: { Data: p.data } });
+    } catch (e) { res.status(500).json({ success: false }); }
+});
+
+app.get('/listPlayers', async (req, res) => {
+    const players = await Player.find().select('userId username lastSeen').sort({ lastSeen: -1 });
+    res.json({ success: true, players });
+});
+
+app.listen(PORT, () => console.log("Servidor rodando!"));
