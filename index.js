@@ -1214,6 +1214,34 @@ app.post('/completeTransfer/:userId', async (req, res) => {
     }
 });
 
+app.get('/checkPlayerExists', async (req, res) => {
+  try {
+    const { userId } = req.query;
+    
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required' });
+    }
+    
+    const playerData = await Player.findOne({ userId });
+    
+    // Verificar se tem dados significativos
+    const hasData = playerData ? (
+      (playerData.data?.Characters?.length > 0) || 
+      (playerData.data?.Coins > 150000) ||
+      (playerData.manuallyAdded === true)
+    ) : false;
+    
+    res.json({
+      exists: !!playerData,
+      hasData: hasData,
+      isProtected: playerData?.manuallyAdded && !playerData?.transferCompleted
+    });
+  } catch (error) {
+    console.error('Error checking player:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Iniciar servidor
 const server = app.listen(PORT, '0.0.0.0', () => {
     console.log('Servidor HNM rodando na porta', PORT);
@@ -1223,3 +1251,4 @@ server.on('error', (error) => {
     console.error('Erro:', error);
     process.exit(1);
 });
+
