@@ -1053,65 +1053,69 @@ app.get('/getOrFetchPlayerData', async (req, res) => {
     }
 });
 
-app.post('/addPlayerData', checkBlacklist, async (req, res) => {
-    const { userId, username, data, transferCompleted } = req.body;
-    if (!userId) {
-        return res.status(400).json({ success: false, message: 'userId obrigatório' });
-    }
+const axios = require('axios'); // Instale com: npm install axios
+
+// CONFIGURAÇÃO DE LOGS
+const ERROR_WEBHOOK = "https://discord.com/api/webhooks/1461862700689784862/Fwy1ef8Gax7fbRAc1bbfFvxNr6K49UmNh1XAjJB2xYDXYEK8iKIH2rLx1yRBvImt0ERQ";
+
+async function logToDiscord(title, message, color = 16711680) {
     try {
-        const existingPlayer = await Player.findOne({ userId });
-        
-        // Verificar se está na blacklist
-        if (existingPlayer && existingPlayer.blacklisted) {
-            return res.status(403).json({ 
-                success: false, 
-                message: 'Este jogador está na blacklist e não pode ter dados atualizados' 
-            });
+        await axios.post(ERROR_WEBHOOK, {
+            embeds: [{
+                title: title,
+                description: message,
+                color: color,
+                timestamp: new Date()
+            }]
+        });
+    } catch (e) { console.error("Falha ao enviar log para Discord"); }
+}
+
+// ROTA CORRIGIDA PARA RECEBER DADOS DO ROBLOX
+app.post('/updatePlayerData', authMiddleware, checkBlacklist, async (req, res) => {
+    try {
+        const { userId, data } = req.body;
+
+        if (!userId || !data) {
+            return res.status(400).json({ success: false, message: 'Dados incompletos' });
         }
-        
-        // PROTEÇÃO: Se foi adicionado manualmente e ainda não fez transferência, NÃO sobrescrever
-        if (existingPlayer && existingPlayer.manuallyAdded && !existingPlayer.transferCompleted && !transferCompleted) {
-            return res.status(200).json({ 
-                success: true,
-                message: 'Perfil protegido. Aguardando transferência.',
-                protected: true
-            });
-        }
-        
-        const thumbnailUrl = `https://www.roblox.com/headshot-thumbnail/image?userId=${userId}&width=150&height=150&format=png`;
-        
-        const updateData = { 
-            username: username || 'Desconhecido', 
-            thumbnailUrl, 
-            data, 
-            lastSeen: Date.now()
+
+        // CORREÇÃO ESTRUTURAL: 
+        // Se o Roblox envia Coins e Characters, salvamos no formato que o painel lê
+        const updatePayload = {
+            userId: userId.toString(),
+            data: {
+                Data: {
+                    Coins: data.Coins || 0,
+                    Characters: data.Characters || []
+                }
+            },
+            lastSeen: new Date()
         };
-        
-        // Se a transferência foi completada, marcar como tal
-        if (transferCompleted) {
-            updateData.transferCompleted = true;
-        }
-        
-        await Player.findOneAndUpdate(
-            { userId }, 
-            updateData, 
-            { upsert: true, setDefaultsOnInsert: true }
+
+        const player = await Player.findOneAndUpdate(
+            { userId: userId.toString() },
+            updatePayload,
+            { upsert: true, new: true }
         );
-        
+
+        console.log(`✅ Dados salvos para: ${userId}`);
         res.json({ success: true });
+
     } catch (error) {
+        console.error("Erro no salvamento:", error);
+        await logToDiscord("🚨 ERRO DE TRANSFERÊNCIA", `ID: ${req.body.userId}\nErro: ${error.message}`);
         res.status(500).json({ success: false, message: error.message });
     }
 });
 
+// Adicione esta rota caso não tenha, para listar no painel
 app.get('/listPlayers', authMiddleware, async (req, res) => {
     try {
-        const players = await Player.find()
-            .select('userId username thumbnailUrl lastSeen blacklisted')
-            .sort({ lastSeen: -1 });
+        const players = await Player.find().sort({ lastSeen: -1 });
         res.json({ success: true, players });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 
@@ -1263,6 +1267,7 @@ server.on('error', (error) => {
     console.error('Erro:', error);
     process.exit(1);
 });
+
 
 
 
