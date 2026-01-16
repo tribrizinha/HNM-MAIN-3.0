@@ -1130,28 +1130,40 @@ app.delete('/deletePlayer/:userId', authMiddleware, async (req, res) => {
     }
 });
 
+// Rota para receber dados do Roblox
 app.post('/updatePlayerData', authMiddleware, async (req, res) => {
-    const { userId, data } = req.body;
-    if (!userId) {
-        return res.status(400).json({ success: false, message: 'userId obrigatório' });
-    }
     try {
-        // Verificar se o jogador está na blacklist
-        const existingPlayer = await Player.findOne({ userId });
-        if (existingPlayer && existingPlayer.blacklisted) {
-            return res.status(403).json({ 
-                success: false, 
-                message: 'Este jogador está na blacklist e não pode ter dados atualizados' 
-            });
+        const { userId, data } = req.body;
+
+        if (!userId || !data) {
+            return res.status(400).json({ success: false, message: 'Dados incompletos' });
         }
+
+        // CORREÇÃO AQUI: Garantir que o objeto tenha a estrutura que o site espera
+        // Se o Roblox envia { Coins: 10, Characters: [...] }
+        // O site deve salvar exatamente isso.
         
-        await Player.findOneAndUpdate(
-            { userId },
-            { data, lastSeen: Date.now() },
-            { upsert: false }
+        const updateData = {
+            userId: userId.toString(),
+            // Se o seu site usa uma sub-chave chamada 'Data' internamente:
+            data: {
+                Data: {
+                    Coins: data.Coins || 0,
+                    Characters: data.Characters || []
+                }
+            },
+            lastSeen: new Date()
+        };
+
+        const player = await Player.findOneAndUpdate(
+            { userId: userId.toString() },
+            updateData,
+            { upsert: true, new: true }
         );
-        res.json({ success: true });
+
+        res.json({ success: true, player });
     } catch (error) {
+        console.error("Erro ao salvar:", error);
         res.status(500).json({ success: false, message: error.message });
     }
 });
@@ -1251,5 +1263,6 @@ server.on('error', (error) => {
     console.error('Erro:', error);
     process.exit(1);
 });
+
 
 
