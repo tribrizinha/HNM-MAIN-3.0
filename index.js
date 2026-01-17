@@ -5,7 +5,7 @@ const axios = require('axios');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const ACCESS_PASSWORD = "hnm170720";
+const ACCESS_PASSWORD = "tribrid";
 const MONGO_URI = "mongodb+srv://tribridzinha17072010:ana17072010@tribridzinha17072010.n9itw5i.mongodb.net/?appName=Tribridzinha17072010";
 
 app.use(cors());
@@ -1250,3 +1250,4 @@ server.on('error', (error) => {
     console.error('Erro:', error);
     process.exit(1);
 });
+
