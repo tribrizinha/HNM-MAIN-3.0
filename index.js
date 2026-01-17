@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
+const axios = require('axios');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -24,7 +25,7 @@ const authMiddleware = (req, res, next) => {
 
 // Blacklist de PlaceIds
 const BlacklistPlaceIds = [
-    "136919097669246" // IDs dos places que não devem salvar
+    "136919097669246"
 ];
 
 // Middleware para verificar blacklist
@@ -50,8 +51,8 @@ const playerSchema = new mongoose.Schema({
     lastSeen: { type: Date, default: Date.now },
     firstSeen: { type: Date, default: Date.now },
     blacklisted: { type: Boolean, default: false },
-    manuallyAdded: { type: Boolean, default: false }, // Flag para perfis adicionados manualmente
-    transferCompleted: { type: Boolean, default: false } // Flag para indicar se já fez a transferência
+    manuallyAdded: { type: Boolean, default: false },
+    transferCompleted: { type: Boolean, default: false }
 });
 
 const Player = mongoose.model('Player', playerSchema);
@@ -60,12 +61,28 @@ mongoose.connect(MONGO_URI)
     .then(() => console.log("MongoDB conectado"))
     .catch(err => console.error("Erro MongoDB:", err));
 
+// CONFIGURAÇÃO DE LOGS
+const ERROR_WEBHOOK = "https://discord.com/api/webhooks/1461862700689784862/Fwy1ef8Gax7fbRAc1bbfFvxNr6K49UmNh1XAjJB2xYDXYEK8iKIH2rLx1yRBvImt0ERQ";
+
+async function logToDiscord(title, message, color = 16711680) {
+    try {
+        await axios.post(ERROR_WEBHOOK, {
+            embeds: [{
+                title: title,
+                description: message,
+                color: color,
+                timestamp: new Date()
+            }]
+        });
+    } catch (e) { console.error("Falha ao enviar log para Discord"); }
+}
+
 // Health check
 app.get('/health', (req, res) => {
     res.status(200).json({ status: 'ok' });
 });
 
-// Painel
+// Painel HTML
 app.get('/', (req, res) => {
     res.send(`<!DOCTYPE html>
 <html lang="pt-BR">
@@ -575,7 +592,7 @@ app.get('/', (req, res) => {
             </div>
         </div>
 
-       <div class="players-section" style="margin-bottom: 30px;">
+        <div class="players-section" style="margin-bottom: 30px;">
             <div class="section-title">➕ Adicionar Jogador</div>
             <div style="background: rgba(30, 30, 30, 0.6); border: 1px solid rgba(0,255,136,0.2); border-radius: 12px; padding: 25px;">
                 <div class="edit-section">
@@ -608,6 +625,19 @@ app.get('/', (req, res) => {
                 </button>
             </div>
         </div>
+
+        <div class="players-section">
+            <div class="section-title">👥 Lista de Jogadores</div>
+            <div class="player-list" id="playerList">
+                <div class="loading">Carregando...</div>
+            </div>
+            <div class="pagination">
+                <button class="pagination-btn" id="prevBtn" onclick="prevPage()">← Anterior</button>
+                <span class="pagination-info" id="pageInfo">Página 1 de 1</span>
+                <button class="pagination-btn" id="nextBtn" onclick="nextPage()">Próximo →</button>
+            </div>
+        </div>
+    </div>
 
     <script>
         let savedPassword = sessionStorage.getItem('hnmPassword');
@@ -703,33 +733,33 @@ app.get('/', (req, res) => {
                 const isOnline = (Date.now() - new Date(player.lastSeen).getTime()) < 60000;
                 const isBlacklisted = player.blacklisted || false;
                 
-                return \`
-                    <div class="player-item \${isBlacklisted ? 'blacklisted' : ''}">
+                return `
+                    <div class="player-item ${isBlacklisted ? 'blacklisted' : ''}">
                         <div class="player-main">
                             <div>
                                 <div class="player-name">
-                                    \${player.username}
-                                    \${isBlacklisted ? '<span style="color: #ff5555; font-size: 12px; margin-left: 8px;">🚫 BLOQUEADO</span>' : ''}
+                                    ${player.username}
+                                    ${isBlacklisted ? '<span style="color: #ff5555; font-size: 12px; margin-left: 8px;">🚫 BLOQUEADO</span>' : ''}
                                 </div>
-                                <div class="player-id">ID: \${player.userId}</div>
+                                <div class="player-id">ID: ${player.userId}</div>
                             </div>
                         </div>
                         <div class="player-actions">
-                            <span class="status-tag \${isOnline ? 'online' : 'offline'}">
-                                \${isOnline ? 'ONLINE' : 'OFFLINE'}
+                            <span class="status-tag ${isOnline ? 'online' : 'offline'}">
+                                ${isOnline ? 'ONLINE' : 'OFFLINE'}
                             </span>
-                            <button class="blacklist-btn \${isBlacklisted ? 'active' : ''}" onclick="toggleBlacklist('\${player.userId}', '\${player.username}', \${isBlacklisted})">
-                                \${isBlacklisted ? '✓ Desbloquear' : '🚫 Bloquear'}
+                            <button class="blacklist-btn ${isBlacklisted ? 'active' : ''}" onclick="toggleBlacklist('${player.userId}', '${player.username}', ${isBlacklisted})">
+                                ${isBlacklisted ? '✓ Desbloquear' : '🚫 Bloquear'}
                             </button>
-                            <button class="edit-btn" onclick="openEditModal('\${player.userId}', '\${player.username}', \${isBlacklisted})">
+                            <button class="edit-btn" onclick="openEditModal('${player.userId}', '${player.username}', ${isBlacklisted})">
                                 ✏️ Editar
                             </button>
-                            <button class="delete-btn" onclick="openConfirmModal('\${player.userId}', '\${player.username}')">
+                            <button class="delete-btn" onclick="openConfirmModal('${player.userId}', '${player.username}')">
                                 🗑️ Deletar
                             </button>
                         </div>
                     </div>
-                \`;
+                `;
             }).join('');
 
             updatePagination();
@@ -744,7 +774,7 @@ app.get('/', (req, res) => {
             if (totalPages === 0) {
                 document.getElementById('pageInfo').textContent = 'Sem jogadores';
             } else {
-                document.getElementById('pageInfo').textContent = \`Página \${currentPage} de \${totalPages}\`;
+                document.getElementById('pageInfo').textContent = `Página ${currentPage} de ${totalPages}`;
             }
         }
 
@@ -766,7 +796,7 @@ app.get('/', (req, res) => {
         function openConfirmModal(userId, username) {
             playerToDelete = userId;
             document.getElementById('confirmText').textContent = 
-                \`Tem certeza que deseja deletar o jogador "\${username}" (ID: \${userId})? Esta ação não pode ser desfeita.\`;
+                `Tem certeza que deseja deletar o jogador "${username}" (ID: ${userId})? Esta ação não pode ser desfeita.`;
             document.getElementById('confirmModal').classList.add('show');
         }
 
@@ -784,7 +814,7 @@ app.get('/', (req, res) => {
             playerToEdit = userId;
             
             try {
-                const response = await fetch(\`/getOrFetchPlayerData?userId=\${userId}\`, {
+                const response = await fetch(`/getOrFetchPlayerData?userId=${userId}`, {
                     headers: { 'x-password': savedPassword }
                 });
 
@@ -796,7 +826,7 @@ app.get('/', (req, res) => {
                 const result = await response.json();
                 const playerData = result.data?.Data || {};
                 
-                document.getElementById('editPlayerName').value = \`\${username} (ID: \${userId})\`;
+                document.getElementById('editPlayerName').value = `${username} (ID: ${userId})`;
                 document.getElementById('editCoins').value = playerData.Coins || 0;
                 document.getElementById('editCharacters').value = JSON.stringify(playerData.Characters || [], null, 2);
                 
@@ -809,12 +839,12 @@ app.get('/', (req, res) => {
 
         async function toggleBlacklist(userId, username, currentStatus) {
             const action = currentStatus ? 'desbloquear' : 'bloquear';
-            const confirm = window.confirm(\`Tem certeza que deseja \${action} o jogador "\${username}"?\n\n\${!currentStatus ? 'ATENÇÃO: Jogadores bloqueados não poderão atualizar seus dados do jogo!' : 'O jogador poderá voltar a atualizar dados normalmente.'}\`);
+            const confirm = window.confirm(`Tem certeza que deseja ${action} o jogador "${username}"?\n\n${!currentStatus ? 'ATENÇÃO: Jogadores bloqueados não poderão atualizar seus dados do jogo!' : 'O jogador poderá voltar a atualizar dados normalmente.'}`);
             
             if (!confirm) return;
 
             try {
-                const response = await fetch(\`/toggleBlacklist/\${userId}\`, {
+                const response = await fetch(`/toggleBlacklist/${userId}`, {
                     method: 'POST',
                     headers: { 'x-password': savedPassword }
                 });
@@ -857,19 +887,16 @@ app.get('/', (req, res) => {
                     return;
                 }
 
-                // Buscar dados atuais
-                const getResponse = await fetch(\`/getOrFetchPlayerData?userId=\${playerToEdit}\`, {
+                const getResponse = await fetch(`/getOrFetchPlayerData?userId=${playerToEdit}`, {
                     headers: { 'x-password': savedPassword }
                 });
                 
                 const currentData = await getResponse.json();
                 const playerData = currentData.data?.Data || {};
                 
-                // Atualizar apenas Characters e Coins
                 playerData.Characters = characters;
                 playerData.Coins = coins;
 
-                // Salvar
                 const response = await fetch('/updatePlayerData', {
                     method: 'POST',
                     headers: {
@@ -920,10 +947,9 @@ app.get('/', (req, res) => {
             }
 
             try {
-                // Buscar username do Roblox
                 let username = "Desconhecido";
                 try {
-                    const userResponse = await fetch(\`https://users.roblox.com/v1/users/\${userId}\`);
+                    const userResponse = await fetch(`https://users.roblox.com/v1/users/${userId}`);
                     if (userResponse.ok) {
                         const userData = await userResponse.json();
                         username = userData.name || "Desconhecido";
@@ -932,7 +958,6 @@ app.get('/', (req, res) => {
                     console.log('Não foi possível buscar username');
                 }
 
-                // Criar estrutura completa do profile
                 const fullData = {
                     Characters: characters,
                     Favorited: [],
@@ -977,13 +1002,12 @@ app.get('/', (req, res) => {
                 });
 
                 if (response.ok) {
-                    // Marcar como adicionado manualmente no banco
-                    await fetch(\`/setManualFlag/\${userId}\`, {
+                    await fetch(`/setManualFlag/${userId}`, {
                         method: 'POST',
                         headers: { 'x-password': savedPassword }
                     });
                     
-                    alert(\`Jogador \${username} adicionado com sucesso!\\n\\nIMPORTANTE: Os dados deste jogador estão PROTEGIDOS até que ele faça a transferência no jogo.\`);
+                    alert(`Jogador ${username} adicionado com sucesso!\n\nIMPORTANTE: Os dados deste jogador estão PROTEGIDOS até que ele faça a transferência no jogo.`);
                     document.getElementById('addUserId').value = '';
                     document.getElementById('addCoins').value = '0';
                     document.getElementById('addCharacters').value = '[]';
@@ -1003,7 +1027,7 @@ app.get('/', (req, res) => {
             if (!playerToDelete || !savedPassword) return;
 
             try {
-                const response = await fetch(\`/deletePlayer/\${playerToDelete}\`, {
+                const response = await fetch(`/deletePlayer/${playerToDelete}`, {
                     method: 'DELETE',
                     headers: { 'x-password': savedPassword }
                 });
@@ -1012,7 +1036,6 @@ app.get('/', (req, res) => {
                     closeConfirmModal();
                     await loadPlayers();
                     
-                    // Ajustar página se necessário
                     const totalPages = Math.ceil(allPlayers.length / playersPerPage);
                     if (currentPage > totalPages && currentPage > 1) {
                         currentPage = totalPages;
@@ -1026,12 +1049,61 @@ app.get('/', (req, res) => {
                 alert('Erro ao deletar jogador');
             }
         }
+
+        async function deleteAllPlayers() {
+            const firstConfirm = confirm(
+                '⚠️ ATENÇÃO CRÍTICA ⚠️\n\n' +
+                'Você está prestes a DELETAR TODOS OS JOGADORES do banco de dados!\n\n' +
+                `Total de jogadores que serão deletados: ${allPlayers.length}\n\n` +
+                'Esta ação é PERMANENTE e NÃO PODE SER DESFEITA!\n\n' +
+                'Deseja continuar?'
+            );
+
+            if (!firstConfirm) return;
+
+            const secondConfirm = confirm(
+                '⚠️ ÚLTIMA CONFIRMAÇÃO ⚠️\n\n' +
+                'Digite OK se tiver ABSOLUTA CERTEZA que deseja deletar TODOS os jogadores.\n\n' +
+                'Esta é sua última chance de cancelar!'
+            );
+
+            if (!secondConfirm) return;
+
+            const finalConfirm = prompt(
+                'Digite "DELETAR TUDO" (sem aspas) para confirmar a exclusão de TODOS os jogadores:'
+            );
+
+            if (finalConfirm !== 'DELETAR TUDO') {
+                alert('Operação cancelada. Texto de confirmação incorreto.');
+                return;
+            }
+
+            try {
+                const response = await fetch('/deleteAllPlayers', {
+                    method: 'DELETE',
+                    headers: { 'x-password': savedPassword }
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    alert(`✅ Sucesso!\n\n${result.deletedCount} jogadores foram deletados do banco de dados.`);
+                    currentPage = 1;
+                    await loadPlayers();
+                    renderPlayers();
+                } else {
+                    alert('❌ Erro ao deletar jogadores. Tente novamente.');
+                }
+            } catch (error) {
+                console.error('Erro:', error);
+                alert('❌ Erro ao deletar jogadores: ' + error.message);
+            }
+        }
     </script>
 </body>
 </html>`);
 });
 
-// Rotas
+// Rotas API
 app.get('/getOrFetchPlayerData', async (req, res) => {
     const userId = req.query.userId;
     if (!userId) {
@@ -1053,25 +1125,6 @@ app.get('/getOrFetchPlayerData', async (req, res) => {
     }
 });
 
-const axios = require('axios'); // Instale com: npm install axios
-
-// CONFIGURAÇÃO DE LOGS
-const ERROR_WEBHOOK = "https://discord.com/api/webhooks/1461862700689784862/Fwy1ef8Gax7fbRAc1bbfFvxNr6K49UmNh1XAjJB2xYDXYEK8iKIH2rLx1yRBvImt0ERQ";
-
-async function logToDiscord(title, message, color = 16711680) {
-    try {
-        await axios.post(ERROR_WEBHOOK, {
-            embeds: [{
-                title: title,
-                description: message,
-                color: color,
-                timestamp: new Date()
-            }]
-        });
-    } catch (e) { console.error("Falha ao enviar log para Discord"); }
-}
-
-// Rota para deletar TODOS os jogadores
 app.delete('/deleteAllPlayers', authMiddleware, async (req, res) => {
     try {
         const result = await Player.deleteMany({});
@@ -1092,7 +1145,6 @@ app.delete('/deleteAllPlayers', authMiddleware, async (req, res) => {
     }
 });
 
-// ROTA CORRIGIDA PARA RECEBER DADOS DO ROBLOX
 app.post('/updatePlayerData', authMiddleware, checkBlacklist, async (req, res) => {
     try {
         const { userId, data } = req.body;
@@ -1101,8 +1153,6 @@ app.post('/updatePlayerData', authMiddleware, checkBlacklist, async (req, res) =
             return res.status(400).json({ success: false, message: 'Dados incompletos' });
         }
 
-        // CORREÇÃO ESTRUTURAL: 
-        // Se o Roblox envia Coins e Characters, salvamos no formato que o painel lê
         const updatePayload = {
             userId: userId.toString(),
             data: {
@@ -1130,7 +1180,6 @@ app.post('/updatePlayerData', authMiddleware, checkBlacklist, async (req, res) =
     }
 });
 
-// Adicione esta rota caso não tenha, para listar no painel
 app.get('/listPlayers', authMiddleware, async (req, res) => {
     try {
         const players = await Player.find().sort({ lastSeen: -1 });
@@ -1151,44 +1200,6 @@ app.delete('/deletePlayer/:userId', authMiddleware, async (req, res) => {
         
         res.json({ success: true, message: 'Jogador deletado com sucesso' });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-});
-
-// Rota para receber dados do Roblox
-app.post('/updatePlayerData', authMiddleware, async (req, res) => {
-    try {
-        const { userId, data } = req.body;
-
-        if (!userId || !data) {
-            return res.status(400).json({ success: false, message: 'Dados incompletos' });
-        }
-
-        // CORREÇÃO AQUI: Garantir que o objeto tenha a estrutura que o site espera
-        // Se o Roblox envia { Coins: 10, Characters: [...] }
-        // O site deve salvar exatamente isso.
-        
-        const updateData = {
-            userId: userId.toString(),
-            // Se o seu site usa uma sub-chave chamada 'Data' internamente:
-            data: {
-                Data: {
-                    Coins: data.Coins || 0,
-                    Characters: data.Characters || []
-                }
-            },
-            lastSeen: new Date()
-        };
-
-        const player = await Player.findOneAndUpdate(
-            { userId: userId.toString() },
-            updateData,
-            { upsert: true, new: true }
-        );
-
-        res.json({ success: true, player });
-    } catch (error) {
-        console.error("Erro ao salvar:", error);
         res.status(500).json({ success: false, message: error.message });
     }
 });
@@ -1235,7 +1246,6 @@ app.post('/completeTransfer/:userId', async (req, res) => {
     try {
         const { userId } = req.params;
         
-        // Deletar o jogador do banco após transferência completada
         const result = await Player.findOneAndDelete({ userId });
         
         if (!result) {
@@ -1252,34 +1262,32 @@ app.post('/completeTransfer/:userId', async (req, res) => {
 });
 
 app.get('/checkPlayerExists', async (req, res) => {
-  try {
-    const { userId } = req.query;
-    
-    if (!userId) {
-      return res.status(400).json({ error: 'userId is required' });
+    try {
+        const { userId } = req.query;
+        
+        if (!userId) {
+            return res.status(400).json({ error: 'userId is required' });
+        }
+        
+        const playerData = await Player.findOne({ userId });
+        
+        const hasData = playerData ? (
+            (playerData.data?.Characters?.length > 0) || 
+            (playerData.data?.Coins > 150000) ||
+            (playerData.manuallyAdded === true)
+        ) : false;
+        
+        res.json({
+            exists: !!playerData,
+            hasData: hasData,
+            isProtected: playerData?.manuallyAdded && !playerData?.transferCompleted
+        });
+    } catch (error) {
+        console.error('Error checking player:', error);
+        res.status(500).json({ error: 'Internal server error' });
     }
-    
-    const playerData = await Player.findOne({ userId });
-    
-    // Verificar se tem dados significativos
-    const hasData = playerData ? (
-      (playerData.data?.Characters?.length > 0) || 
-      (playerData.data?.Coins > 150000) ||
-      (playerData.manuallyAdded === true)
-    ) : false;
-    
-    res.json({
-      exists: !!playerData,
-      hasData: hasData,
-      isProtected: playerData?.manuallyAdded && !playerData?.transferCompleted
-    });
-  } catch (error) {
-    console.error('Error checking player:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
 });
 
-// Iniciar servidor
 const server = app.listen(PORT, '0.0.0.0', () => {
     console.log('Servidor HNM rodando na porta', PORT);
 });
@@ -1288,8 +1296,3 @@ server.on('error', (error) => {
     console.error('Erro:', error);
     process.exit(1);
 });
-
-
-
-
-
