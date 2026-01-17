@@ -575,7 +575,7 @@ app.get('/', (req, res) => {
             </div>
         </div>
 
-        <div class="players-section" style="margin-bottom: 30px;">
+       <div class="players-section" style="margin-bottom: 30px;">
             <div class="section-title">➕ Adicionar Jogador</div>
             <div style="background: rgba(30, 30, 30, 0.6); border: 1px solid rgba(0,255,136,0.2); border-radius: 12px; padding: 25px;">
                 <div class="edit-section">
@@ -596,18 +596,18 @@ app.get('/', (req, res) => {
             </div>
         </div>
 
-        <div class="players-section">
-            <div class="section-title">👥 Jogadores Registrados</div>
-            <div id="playerList" class="player-list">
-                <div class="loading">Carregando...</div>
-            </div>
-            <div class="pagination">
-                <button class="pagination-btn" id="prevBtn" onclick="prevPage()" disabled>← Anterior</button>
-                <span class="pagination-info" id="pageInfo">Página 1</span>
-                <button class="pagination-btn" id="nextBtn" onclick="nextPage()" disabled>Próxima →</button>
+        <div class="players-section" style="margin-bottom: 30px;">
+            <div class="section-title">🗑️ Gerenciamento de Dados</div>
+            <div style="background: rgba(50, 20, 20, 0.6); border: 1px solid rgba(255,50,50,0.3); border-radius: 12px; padding: 25px;">
+                <p style="color: #ff6666; margin-bottom: 15px; font-size: 14px; line-height: 1.6;">
+                    ⚠️ <strong>ATENÇÃO:</strong> Esta ação irá deletar <strong>TODOS</strong> os jogadores do banco de dados permanentemente. 
+                    Esta operação não pode ser desfeita!
+                </p>
+                <button class="delete-btn" style="width: 100%; font-size: 15px; padding: 15px;" onclick="deleteAllPlayers()">
+                    🗑️ DELETAR TODOS OS JOGADORES
+                </button>
             </div>
         </div>
-    </div>
 
     <script>
         let savedPassword = sessionStorage.getItem('hnmPassword');
@@ -1071,6 +1071,27 @@ async function logToDiscord(title, message, color = 16711680) {
     } catch (e) { console.error("Falha ao enviar log para Discord"); }
 }
 
+// Rota para deletar TODOS os jogadores
+app.delete('/deleteAllPlayers', authMiddleware, async (req, res) => {
+    try {
+        const result = await Player.deleteMany({});
+        
+        console.log(`🗑️ TODOS OS JOGADORES DELETADOS: ${result.deletedCount} registros removidos`);
+        
+        res.json({ 
+            success: true, 
+            deletedCount: result.deletedCount,
+            message: `${result.deletedCount} jogadores foram deletados com sucesso` 
+        });
+    } catch (error) {
+        console.error('Erro ao deletar todos os jogadores:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Erro ao deletar jogadores: ' + error.message 
+        });
+    }
+});
+
 // ROTA CORRIGIDA PARA RECEBER DADOS DO ROBLOX
 app.post('/updatePlayerData', authMiddleware, checkBlacklist, async (req, res) => {
     try {
@@ -1267,6 +1288,7 @@ server.on('error', (error) => {
     console.error('Erro:', error);
     process.exit(1);
 });
+
 
 
 
