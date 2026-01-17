@@ -5,16 +5,12 @@ const axios = require('axios');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Senha de acesso
-const ACCESS_PASSWORD = "tribridzinha1213";
-
-// MongoDB
+const ACCESS_PASSWORD = "hnm170720";
 const MONGO_URI = "mongodb+srv://tribridzinha17072010:ana17072010@tribridzinha17072010.n9itw5i.mongodb.net/?appName=Tribridzinha17072010";
 
 app.use(cors());
 app.use(express.json({ limit: '5mb' }));
 
-// Middleware de autenticação
 const authMiddleware = (req, res, next) => {
     const password = req.headers['x-password'] || req.query.password;
     if (password === ACCESS_PASSWORD) {
@@ -23,26 +19,19 @@ const authMiddleware = (req, res, next) => {
     res.status(401).json({ success: false, message: 'Senha incorreta' });
 };
 
-// Blacklist de PlaceIds
-const BlacklistPlaceIds = [
-    "136919097669246"
-];
+const BlacklistPlaceIds = ["136919097669246"];
 
-// Middleware para verificar blacklist
 const checkBlacklist = (req, res, next) => {
     const placeId = req.headers['x-place-id'] || req.body.placeId;
-    
     if (placeId && BlacklistPlaceIds.includes(placeId.toString())) {
         return res.status(403).json({ 
             success: false, 
             message: 'Este Place está na blacklist e não pode salvar dados' 
         });
     }
-    
     next();
 };
 
-// Schema
 const playerSchema = new mongoose.Schema({
     userId: { type: String, required: true, unique: true },
     username: { type: String, default: "Desconhecido" },
@@ -61,7 +50,6 @@ mongoose.connect(MONGO_URI)
     .then(() => console.log("MongoDB conectado"))
     .catch(err => console.error("Erro MongoDB:", err));
 
-// CONFIGURAÇÃO DE LOGS
 const ERROR_WEBHOOK = "https://discord.com/api/webhooks/1461862700689784862/Fwy1ef8Gax7fbRAc1bbfFvxNr6K49UmNh1XAjJB2xYDXYEK8iKIH2rLx1yRBvImt0ERQ";
 
 async function logToDiscord(title, message, color = 16711680) {
@@ -77,12 +65,10 @@ async function logToDiscord(title, message, color = 16711680) {
     } catch (e) { console.error("Falha ao enviar log para Discord"); }
 }
 
-// Health check
 app.get('/health', (req, res) => {
     res.status(200).json({ status: 'ok' });
 });
 
-// Painel HTML
 app.get('/', (req, res) => {
     res.send(`<!DOCTYPE html>
 <html lang="pt-BR">
@@ -230,6 +216,7 @@ app.get('/', (req, res) => {
             border: 1px solid rgba(255,255,255,0.1);
             border-radius: 20px;
             padding: 30px;
+            margin-bottom: 30px;
         }
         .section-title {
             font-size: 22px;
@@ -592,7 +579,7 @@ app.get('/', (req, res) => {
             </div>
         </div>
 
-        <div class="players-section" style="margin-bottom: 30px;">
+        <div class="players-section">
             <div class="section-title">➕ Adicionar Jogador</div>
             <div style="background: rgba(30, 30, 30, 0.6); border: 1px solid rgba(0,255,136,0.2); border-radius: 12px; padding: 25px;">
                 <div class="edit-section">
@@ -613,7 +600,7 @@ app.get('/', (req, res) => {
             </div>
         </div>
 
-        <div class="players-section" style="margin-bottom: 30px;">
+        <div class="players-section">
             <div class="section-title">🗑️ Gerenciamento de Dados</div>
             <div style="background: rgba(50, 20, 20, 0.6); border: 1px solid rgba(255,50,50,0.3); border-radius: 12px; padding: 25px;">
                 <p style="color: #ff6666; margin-bottom: 15px; font-size: 14px; line-height: 1.6;">
@@ -732,34 +719,27 @@ app.get('/', (req, res) => {
             list.innerHTML = playersToShow.map((player) => {
                 const isOnline = (Date.now() - new Date(player.lastSeen).getTime()) < 60000;
                 const isBlacklisted = player.blacklisted || false;
+                const blacklistedClass = isBlacklisted ? 'blacklisted' : '';
+                const onlineClass = isOnline ? 'online' : 'offline';
+                const onlineText = isOnline ? 'ONLINE' : 'OFFLINE';
+                const blacklistBtnClass = isBlacklisted ? 'active' : '';
+                const blacklistBtnText = isBlacklisted ? '✓ Desbloquear' : '🚫 Bloquear';
+                const blacklistedBadge = isBlacklisted ? '<span style="color: #ff5555; font-size: 12px; margin-left: 8px;">🚫 BLOQUEADO</span>' : '';
                 
-                return `
-                    <div class="player-item ${isBlacklisted ? 'blacklisted' : ''}">
-                        <div class="player-main">
-                            <div>
-                                <div class="player-name">
-                                    ${player.username}
-                                    ${isBlacklisted ? '<span style="color: #ff5555; font-size: 12px; margin-left: 8px;">🚫 BLOQUEADO</span>' : ''}
-                                </div>
-                                <div class="player-id">ID: ${player.userId}</div>
-                            </div>
-                        </div>
-                        <div class="player-actions">
-                            <span class="status-tag ${isOnline ? 'online' : 'offline'}">
-                                ${isOnline ? 'ONLINE' : 'OFFLINE'}
-                            </span>
-                            <button class="blacklist-btn ${isBlacklisted ? 'active' : ''}" onclick="toggleBlacklist('${player.userId}', '${player.username}', ${isBlacklisted})">
-                                ${isBlacklisted ? '✓ Desbloquear' : '🚫 Bloquear'}
-                            </button>
-                            <button class="edit-btn" onclick="openEditModal('${player.userId}', '${player.username}', ${isBlacklisted})">
-                                ✏️ Editar
-                            </button>
-                            <button class="delete-btn" onclick="openConfirmModal('${player.userId}', '${player.username}')">
-                                🗑️ Deletar
-                            </button>
-                        </div>
-                    </div>
-                `;
+                return '<div class="player-item ' + blacklistedClass + '">' +
+                    '<div class="player-main">' +
+                        '<div>' +
+                            '<div class="player-name">' + player.username + blacklistedBadge + '</div>' +
+                            '<div class="player-id">ID: ' + player.userId + '</div>' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="player-actions">' +
+                        '<span class="status-tag ' + onlineClass + '">' + onlineText + '</span>' +
+                        '<button class="blacklist-btn ' + blacklistBtnClass + '" onclick="toggleBlacklist(\'' + player.userId + '\', \'' + player.username + '\', ' + isBlacklisted + ')">' + blacklistBtnText + '</button>' +
+                        '<button class="edit-btn" onclick="openEditModal(\'' + player.userId + '\', \'' + player.username + '\', ' + isBlacklisted + ')">✏️ Editar</button>' +
+                        '<button class="delete-btn" onclick="openConfirmModal(\'' + player.userId + '\', \'' + player.username + '\')">🗑️ Deletar</button>' +
+                    '</div>' +
+                '</div>';
             }).join('');
 
             updatePagination();
@@ -774,7 +754,7 @@ app.get('/', (req, res) => {
             if (totalPages === 0) {
                 document.getElementById('pageInfo').textContent = 'Sem jogadores';
             } else {
-                document.getElementById('pageInfo').textContent = `Página ${currentPage} de ${totalPages}`;
+                document.getElementById('pageInfo').textContent = 'Página ' + currentPage + ' de ' + totalPages;
             }
         }
 
@@ -795,8 +775,7 @@ app.get('/', (req, res) => {
 
         function openConfirmModal(userId, username) {
             playerToDelete = userId;
-            document.getElementById('confirmText').textContent = 
-                `Tem certeza que deseja deletar o jogador "${username}" (ID: ${userId})? Esta ação não pode ser desfeita.`;
+            document.getElementById('confirmText').textContent = 'Tem certeza que deseja deletar o jogador "' + username + '" (ID: ' + userId + ')? Esta ação não pode ser desfeita.';
             document.getElementById('confirmModal').classList.add('show');
         }
 
@@ -814,7 +793,7 @@ app.get('/', (req, res) => {
             playerToEdit = userId;
             
             try {
-                const response = await fetch(`/getOrFetchPlayerData?userId=${userId}`, {
+                const response = await fetch('/getOrFetchPlayerData?userId=' + userId, {
                     headers: { 'x-password': savedPassword }
                 });
 
@@ -826,7 +805,7 @@ app.get('/', (req, res) => {
                 const result = await response.json();
                 const playerData = result.data?.Data || {};
                 
-                document.getElementById('editPlayerName').value = `${username} (ID: ${userId})`;
+                document.getElementById('editPlayerName').value = username + ' (ID: ' + userId + ')';
                 document.getElementById('editCoins').value = playerData.Coins || 0;
                 document.getElementById('editCharacters').value = JSON.stringify(playerData.Characters || [], null, 2);
                 
@@ -839,12 +818,13 @@ app.get('/', (req, res) => {
 
         async function toggleBlacklist(userId, username, currentStatus) {
             const action = currentStatus ? 'desbloquear' : 'bloquear';
-            const confirm = window.confirm(`Tem certeza que deseja ${action} o jogador "${username}"?\n\n${!currentStatus ? 'ATENÇÃO: Jogadores bloqueados não poderão atualizar seus dados do jogo!' : 'O jogador poderá voltar a atualizar dados normalmente.'}`);
+            const warningMsg = !currentStatus ? 'ATENÇÃO: Jogadores bloqueados não poderão atualizar seus dados do jogo!' : 'O jogador poderá voltar a atualizar dados normalmente.';
+            const confirm = window.confirm('Tem certeza que deseja ' + action + ' o jogador "' + username + '"?\n\n' + warningMsg);
             
             if (!confirm) return;
 
             try {
-                const response = await fetch(`/toggleBlacklist/${userId}`, {
+                const response = await fetch('/toggleBlacklist/' + userId, {
                     method: 'POST',
                     headers: { 'x-password': savedPassword }
                 });
@@ -887,7 +867,7 @@ app.get('/', (req, res) => {
                     return;
                 }
 
-                const getResponse = await fetch(`/getOrFetchPlayerData?userId=${playerToEdit}`, {
+                const getResponse = await fetch('/getOrFetchPlayerData?userId=' + playerToEdit, {
                     headers: { 'x-password': savedPassword }
                 });
                 
@@ -949,7 +929,7 @@ app.get('/', (req, res) => {
             try {
                 let username = "Desconhecido";
                 try {
-                    const userResponse = await fetch(`https://users.roblox.com/v1/users/${userId}`);
+                    const userResponse = await fetch('https://users.roblox.com/v1/users/' + userId);
                     if (userResponse.ok) {
                         const userData = await userResponse.json();
                         username = userData.name || "Desconhecido";
@@ -1002,12 +982,12 @@ app.get('/', (req, res) => {
                 });
 
                 if (response.ok) {
-                    await fetch(`/setManualFlag/${userId}`, {
+                    await fetch('/setManualFlag/' + userId, {
                         method: 'POST',
                         headers: { 'x-password': savedPassword }
                     });
                     
-                    alert(`Jogador ${username} adicionado com sucesso!\n\nIMPORTANTE: Os dados deste jogador estão PROTEGIDOS até que ele faça a transferência no jogo.`);
+                    alert('Jogador ' + username + ' adicionado com sucesso!\n\nIMPORTANTE: Os dados deste jogador estão PROTEGIDOS até que ele faça a transferência no jogo.');
                     document.getElementById('addUserId').value = '';
                     document.getElementById('addCoins').value = '0';
                     document.getElementById('addCharacters').value = '[]';
@@ -1027,7 +1007,7 @@ app.get('/', (req, res) => {
             if (!playerToDelete || !savedPassword) return;
 
             try {
-                const response = await fetch(`/deletePlayer/${playerToDelete}`, {
+                const response = await fetch('/deletePlayer/' + playerToDelete, {
                     method: 'DELETE',
                     headers: { 'x-password': savedPassword }
                 });
@@ -1054,7 +1034,7 @@ app.get('/', (req, res) => {
             const firstConfirm = confirm(
                 '⚠️ ATENÇÃO CRÍTICA ⚠️\n\n' +
                 'Você está prestes a DELETAR TODOS OS JOGADORES do banco de dados!\n\n' +
-                `Total de jogadores que serão deletados: ${allPlayers.length}\n\n` +
+                'Total de jogadores que serão deletados: ' + allPlayers.length + '\n\n' +
                 'Esta ação é PERMANENTE e NÃO PODE SER DESFEITA!\n\n' +
                 'Deseja continuar?'
             );
@@ -1086,7 +1066,7 @@ app.get('/', (req, res) => {
 
                 if (response.ok) {
                     const result = await response.json();
-                    alert(`✅ Sucesso!\n\n${result.deletedCount} jogadores foram deletados do banco de dados.`);
+                    alert('✅ Sucesso!\n\n' + result.deletedCount + ' jogadores foram deletados do banco de dados.');
                     currentPage = 1;
                     await loadPlayers();
                     renderPlayers();
@@ -1103,7 +1083,6 @@ app.get('/', (req, res) => {
 </html>`);
 });
 
-// Rotas API
 app.get('/getOrFetchPlayerData', async (req, res) => {
     const userId = req.query.userId;
     if (!userId) {
@@ -1128,13 +1107,11 @@ app.get('/getOrFetchPlayerData', async (req, res) => {
 app.delete('/deleteAllPlayers', authMiddleware, async (req, res) => {
     try {
         const result = await Player.deleteMany({});
-        
-        console.log(`🗑️ TODOS OS JOGADORES DELETADOS: ${result.deletedCount} registros removidos`);
-        
+        console.log('🗑️ TODOS OS JOGADORES DELETADOS: ' + result.deletedCount + ' registros removidos');
         res.json({ 
             success: true, 
             deletedCount: result.deletedCount,
-            message: `${result.deletedCount} jogadores foram deletados com sucesso` 
+            message: result.deletedCount + ' jogadores foram deletados com sucesso' 
         });
     } catch (error) {
         console.error('Erro ao deletar todos os jogadores:', error);
@@ -1148,11 +1125,9 @@ app.delete('/deleteAllPlayers', authMiddleware, async (req, res) => {
 app.post('/updatePlayerData', authMiddleware, checkBlacklist, async (req, res) => {
     try {
         const { userId, data } = req.body;
-
         if (!userId || !data) {
             return res.status(400).json({ success: false, message: 'Dados incompletos' });
         }
-
         const updatePayload = {
             userId: userId.toString(),
             data: {
@@ -1163,19 +1138,16 @@ app.post('/updatePlayerData', authMiddleware, checkBlacklist, async (req, res) =
             },
             lastSeen: new Date()
         };
-
         const player = await Player.findOneAndUpdate(
             { userId: userId.toString() },
             updatePayload,
             { upsert: true, new: true }
         );
-
-        console.log(`✅ Dados salvos para: ${userId}`);
+        console.log('✅ Dados salvos para: ' + userId);
         res.json({ success: true });
-
     } catch (error) {
         console.error("Erro no salvamento:", error);
-        await logToDiscord("🚨 ERRO DE TRANSFERÊNCIA", `ID: ${req.body.userId}\nErro: ${error.message}`);
+        await logToDiscord("🚨 ERRO DE TRANSFERÊNCIA", "ID: " + req.body.userId + "\nErro: " + error.message);
         res.status(500).json({ success: false, message: error.message });
     }
 });
@@ -1193,11 +1165,9 @@ app.delete('/deletePlayer/:userId', authMiddleware, async (req, res) => {
     try {
         const { userId } = req.params;
         const result = await Player.findOneAndDelete({ userId });
-        
         if (!result) {
             return res.status(404).json({ success: false, message: 'Jogador não encontrado' });
         }
-        
         res.json({ success: true, message: 'Jogador deletado com sucesso' });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -1208,17 +1178,11 @@ app.post('/toggleBlacklist/:userId', authMiddleware, async (req, res) => {
     try {
         const { userId } = req.params;
         const player = await Player.findOne({ userId });
-        
         if (!player) {
             return res.status(404).json({ success: false, message: 'Jogador não encontrado' });
         }
-        
         const newBlacklistStatus = !player.blacklisted;
-        await Player.findOneAndUpdate(
-            { userId },
-            { blacklisted: newBlacklistStatus }
-        );
-        
+        await Player.findOneAndUpdate({ userId }, { blacklisted: newBlacklistStatus });
         res.json({ 
             success: true, 
             blacklisted: newBlacklistStatus,
@@ -1232,10 +1196,7 @@ app.post('/toggleBlacklist/:userId', authMiddleware, async (req, res) => {
 app.post('/setManualFlag/:userId', authMiddleware, async (req, res) => {
     try {
         const { userId } = req.params;
-        await Player.findOneAndUpdate(
-            { userId },
-            { manuallyAdded: true, transferCompleted: false }
-        );
+        await Player.findOneAndUpdate({ userId }, { manuallyAdded: true, transferCompleted: false });
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -1245,13 +1206,10 @@ app.post('/setManualFlag/:userId', authMiddleware, async (req, res) => {
 app.post('/completeTransfer/:userId', async (req, res) => {
     try {
         const { userId } = req.params;
-        
         const result = await Player.findOneAndDelete({ userId });
-        
         if (!result) {
             return res.status(404).json({ success: false, message: 'Jogador não encontrado' });
         }
-        
         res.json({ 
             success: true, 
             message: 'Transferência completa. Jogador removido do servidor.'
@@ -1264,19 +1222,15 @@ app.post('/completeTransfer/:userId', async (req, res) => {
 app.get('/checkPlayerExists', async (req, res) => {
     try {
         const { userId } = req.query;
-        
         if (!userId) {
             return res.status(400).json({ error: 'userId is required' });
         }
-        
         const playerData = await Player.findOne({ userId });
-        
         const hasData = playerData ? (
             (playerData.data?.Characters?.length > 0) || 
             (playerData.data?.Coins > 150000) ||
             (playerData.manuallyAdded === true)
         ) : false;
-        
         res.json({
             exists: !!playerData,
             hasData: hasData,
@@ -1296,4 +1250,3 @@ server.on('error', (error) => {
     console.error('Erro:', error);
     process.exit(1);
 });
-
