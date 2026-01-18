@@ -24,7 +24,7 @@ const authMiddleware = (req, res, next) => {
 
 // Blacklist de PlaceIds
 const BlacklistPlaceIds = [
-    "136919097669246" // IDs dos places que não devem salvar
+    "" // IDs dos places que não devem salvar
 ];
 
 // Middleware para verificar blacklist
@@ -1055,26 +1055,37 @@ app.get('/getOrFetchPlayerData', async (req, res) => {
 
 app.post('/addPlayerData', checkBlacklist, async (req, res) => {
     const { userId, username, data, transferCompleted } = req.body;
+    
+    console.log("\n" + "=".repeat(60));
+    console.log("📤 POST /addPlayerData");
+    console.log("userId:", userId);
+    console.log("username:", username);
+    console.log("transferCompleted:", transferCompleted);
+    console.log("data.Characters length:", data?.Characters?.length || 0);
+    console.log("=".repeat(60));
+    
     if (!userId) {
         return res.status(400).json({ success: false, message: 'userId obrigatório' });
     }
+    
     try {
         const existingPlayer = await Player.findOne({ userId });
         
+        if (existingPlayer) {
+            console.log("✅ Jogador encontrado no BD");
+            console.log("   - blacklisted:", existingPlayer.blacklisted);
+            console.log("   - manuallyAdded:", existingPlayer.manuallyAdded);
+            console.log("   - transferCompleted:", existingPlayer.transferCompleted);
+        } else {
+            console.log("➕ Novo jogador será criado");
+        }
+        
         // Verificar se está na blacklist
         if (existingPlayer && existingPlayer.blacklisted) {
+            console.log("❌ BLOQUEADO: Jogador na blacklist");
             return res.status(403).json({ 
                 success: false, 
                 message: 'Este jogador está na blacklist e não pode ter dados atualizados' 
-            });
-        }
-        
-        // PROTEÇÃO: Se foi adicionado manualmente e ainda não fez transferência, NÃO sobrescrever
-        if (existingPlayer && existingPlayer.manuallyAdded && !existingPlayer.transferCompleted && !transferCompleted) {
-            return res.status(200).json({ 
-                success: true,
-                message: 'Perfil protegido. Aguardando transferência.',
-                protected: true
             });
         }
         
@@ -1087,18 +1098,73 @@ app.post('/addPlayerData', checkBlacklist, async (req, res) => {
             lastSeen: Date.now()
         };
         
-        // Se a transferência foi completada, marcar como tal
         if (transferCompleted) {
             updateData.transferCompleted = true;
         }
         
-        await Player.findOneAndUpdate(
+        console.log("💾 Salvando no MongoDB...");
+        
+        // 🟢 AGUARDA O SAVE COMPLETAR
+        const result = await Player.findOneAndUpdate(
             { userId }, 
             updateData, 
-            { upsert: true, setDefaultsOnInsert: true }
+            { upsert: true, setDefaultsOnInsert: true, new: true }
         );
         
-        res.json({ success: true });
+        if (!result) {
+            console.log("❌ FALHA: findOneAndUpdate retornou null");
+            return res.status(500).json({ 
+                success: false, 
+                message: 'Falha ao salvar dados' 
+            });
+        }
+        
+        console.log("✅ SALVO COM SUCESSO!");
+        console.log("   - Personagens: " + (result.data?.Characters?.length || 0));
+        console.log("   - Username: " + result.username);
+        console.log("=".repeat(60) + "\n");
+        
+        // 🟢 RESPONDE COM CONFIRMAÇÃO
+        res.json({ 
+            success: true,
+            saved: true,
+            characterCount: result.data?.Characters?.length || 0
+        });
+        
+    } catch (error) {
+        console.error("❌ ERRO CRÍTICO:", error.message);
+        console.error("Stack:", error.stack);
+        console.log("=".repeat(60) + "\n");
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// 🆕 ENDPOINT PARA RESETAR TRANSFER AUTOMATICAMENTE
+app.post('/resetTransferAuto/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        
+        const player = await Player.findOne({ userId });
+        
+        if (!player) {
+            return res.status(404).json({ 
+                success: false, 
+                message: 'Jogador não encontrado' 
+            });
+        }
+        
+        // Remove a flag de transferência completa
+        await Player.findOneAndUpdate(
+            { userId },
+            { transferCompleted: false }
+        );
+        
+        console.log(`🔄 Transfer resetada automaticamente para ${userId}`);
+        
+        res.json({ 
+            success: true, 
+            message: 'Transfer resetada para novo envio' 
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
