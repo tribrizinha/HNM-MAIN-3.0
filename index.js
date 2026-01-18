@@ -1056,24 +1056,20 @@ app.get('/getOrFetchPlayerData', async (req, res) => {
 app.post('/addPlayerData', checkBlacklist, async (req, res) => {
     const { userId, username, data, transferCompleted } = req.body;
     
-    console.log("\n" + "=".repeat(60));
-    console.log("📤 POST /addPlayerData");
-    console.log("userId:", userId);
-    console.log("username:", username);
-    console.log("=".repeat(60));
-    
     if (!userId) {
         return res.status(400).json({ success: false, message: 'userId obrigatório' });
     }
     
     try {
-        // 🟢 GARANTIR QUE DATA TEM A ESTRUTURA CORRETA
+        console.log(`\n📤 [addPlayerData] Recebido para: ${userId}`);
+        
+        // 🟢 GARANTIR QUE DATA TEM ESTRUTURA CORRETA
         const safeData = {
-            Characters: data?.Characters || [],
-            Coins: data?.Coins || 0,
-            Kills: data?.Kills || 0,
-            RedeemedCodes: data?.RedeemedCodes || [],
-            QuestCollections: data?.QuestCollections || {
+            Characters: Array.isArray(data?.Characters) ? data.Characters : [],
+            Coins: typeof data?.Coins === 'number' ? data.Coins : 0,
+            Kills: typeof data?.Kills === 'number' ? data.Kills : 0,
+            RedeemedCodes: Array.isArray(data?.RedeemedCodes) ? data.RedeemedCodes : [],
+            QuestCollections: {
                 Crowns: 0,
                 PrincessCrowns: 0,
                 ZeusBolts: 0,
@@ -1089,45 +1085,28 @@ app.post('/addPlayerData', checkBlacklist, async (req, res) => {
                 Pyramids: 0,
                 TechCoins: 0,
             },
-            FavoritedCharacters: data?.FavoritedCharacters || [],
-            Favorited: data?.Favorited || [],
-            ActiveBoost: data?.ActiveBoost || 0,
-            LastTransferCheck: data?.LastTransferCheck || null,
-            LastJoinTime: data?.LastJoinTime || null,
-            RedeemedCompensation: data?.RedeemedCompensation || [],
-            RedeemedStarterCoins: data?.RedeemedStarterCoins || false,
-            HnmNewera2: data?.HnmNewera2 || false,
+            FavoritedCharacters: Array.isArray(data?.FavoritedCharacters) ? data.FavoritedCharacters : [],
+            Favorited: Array.isArray(data?.Favorited) ? data.Favorited : [],
+            ActiveBoost: 0,
+            LastTransferCheck: null,
+            LastJoinTime: null,
+            RedeemedCompensation: [],
+            RedeemedStarterCoins: false,
+            HnmNewera2: false,
         };
 
-        const existingPlayer = await Player.findOne({ userId });
-        
-        if (existingPlayer) {
-            console.log("✅ Jogador encontrado no BD");
-        } else {
-            console.log("➕ Novo jogador será criado");
-        }
-        
-        // Verificar se está na blacklist
-        if (existingPlayer && existingPlayer.blacklisted) {
-            console.log("❌ BLOQUEADO: Jogador na blacklist");
-            return res.status(403).json({ 
-                success: false, 
-                message: 'Este jogador está na blacklist' 
-            });
-        }
-        
         const thumbnailUrl = `https://www.roblox.com/headshot-thumbnail/image?userId=${userId}&width=150&height=150&format=png`;
         
         const updateData = { 
             username: username || 'Desconhecido', 
             thumbnailUrl, 
-            data: safeData,  // 🟢 USA DADOS SEGUROS
+            data: safeData,
             lastSeen: new Date(),
-            transferCompleted: transferCompleted === true
+            transferCompleted: transferCompleted === true,
+            blacklisted: false
         };
         
-        console.log("💾 Salvando no MongoDB...");
-        console.log("   - Characters: " + safeData.Characters.length);
+        console.log(`💾 Salvando ${safeData.Characters.length} personagens...`);
         
         const result = await Player.findOneAndUpdate(
             { userId }, 
@@ -1140,34 +1119,29 @@ app.post('/addPlayerData', checkBlacklist, async (req, res) => {
         );
         
         if (!result) {
-            console.log("❌ FALHA: Não conseguiu salvar");
+            console.error(`❌ Falha ao salvar para ${userId}`);
             return res.status(500).json({ 
                 success: false, 
                 message: 'Falha ao salvar dados' 
             });
         }
         
-        console.log("✅ SALVO COM SUCESSO!");
-        console.log("   - ID: " + result.userId);
-        console.log("   - Personagens: " + (result.data?.Characters?.length || 0));
-        console.log("=".repeat(60) + "\n");
+        console.log(`✅ Salvo com sucesso! ${safeData.Characters.length} personagens`);
         
         res.json({ 
             success: true,
             saved: true,
-            characterCount: result.data?.Characters?.length || 0
+            characterCount: safeData.Characters.length
         });
         
     } catch (error) {
-        console.error("❌ ERRO CRÍTICO:", error.message);
-        console.error("Stack:", error.stack);
-        console.log("=".repeat(60) + "\n");
+        console.error(`❌ ERRO em /addPlayerData:`, error.message);
         res.status(500).json({ 
             success: false, 
-            message: "Erro ao salvar: " + error.message 
+            message: error.message 
         });
     }
-});;
+});
 
 // 🆕 ENDPOINT PARA RESETAR TRANSFER AUTOMATICAMENTE
 app.post('/resetTransferAuto/:userId', async (req, res) => {
@@ -1319,4 +1293,5 @@ server.on('error', (error) => {
     console.error('Erro:', error);
     process.exit(1);
 });
+
 
