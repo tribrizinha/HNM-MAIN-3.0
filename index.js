@@ -1060,8 +1060,6 @@ app.post('/addPlayerData', checkBlacklist, async (req, res) => {
     console.log("📤 POST /addPlayerData");
     console.log("userId:", userId);
     console.log("username:", username);
-    console.log("transferCompleted:", transferCompleted);
-    console.log("data.Characters length:", data?.Characters?.length || 0);
     console.log("=".repeat(60));
     
     if (!userId) {
@@ -1069,13 +1067,42 @@ app.post('/addPlayerData', checkBlacklist, async (req, res) => {
     }
     
     try {
+        // 🟢 GARANTIR QUE DATA TEM A ESTRUTURA CORRETA
+        const safeData = {
+            Characters: data?.Characters || [],
+            Coins: data?.Coins || 0,
+            Kills: data?.Kills || 0,
+            RedeemedCodes: data?.RedeemedCodes || [],
+            QuestCollections: data?.QuestCollections || {
+                Crowns: 0,
+                PrincessCrowns: 0,
+                ZeusBolts: 0,
+                MadisonSkulls: 0,
+                LokiRose: 0,
+                DJCoins: 0,
+                HarryUltronKills: 0,
+                FortuneTellerUltronKills: 0,
+                KingKills: 0,
+                ArcherKills: 0,
+                JavelinKills: 0,
+                BeeCrowns: 0,
+                Pyramids: 0,
+                TechCoins: 0,
+            },
+            FavoritedCharacters: data?.FavoritedCharacters || [],
+            Favorited: data?.Favorited || [],
+            ActiveBoost: data?.ActiveBoost || 0,
+            LastTransferCheck: data?.LastTransferCheck || null,
+            LastJoinTime: data?.LastJoinTime || null,
+            RedeemedCompensation: data?.RedeemedCompensation || [],
+            RedeemedStarterCoins: data?.RedeemedStarterCoins || false,
+            HnmNewera2: data?.HnmNewera2 || false,
+        };
+
         const existingPlayer = await Player.findOne({ userId });
         
         if (existingPlayer) {
             console.log("✅ Jogador encontrado no BD");
-            console.log("   - blacklisted:", existingPlayer.blacklisted);
-            console.log("   - manuallyAdded:", existingPlayer.manuallyAdded);
-            console.log("   - transferCompleted:", existingPlayer.transferCompleted);
         } else {
             console.log("➕ Novo jogador será criado");
         }
@@ -1085,7 +1112,7 @@ app.post('/addPlayerData', checkBlacklist, async (req, res) => {
             console.log("❌ BLOQUEADO: Jogador na blacklist");
             return res.status(403).json({ 
                 success: false, 
-                message: 'Este jogador está na blacklist e não pode ter dados atualizados' 
+                message: 'Este jogador está na blacklist' 
             });
         }
         
@@ -1094,25 +1121,26 @@ app.post('/addPlayerData', checkBlacklist, async (req, res) => {
         const updateData = { 
             username: username || 'Desconhecido', 
             thumbnailUrl, 
-            data, 
-            lastSeen: Date.now()
+            data: safeData,  // 🟢 USA DADOS SEGUROS
+            lastSeen: new Date(),
+            transferCompleted: transferCompleted === true
         };
         
-        if (transferCompleted) {
-            updateData.transferCompleted = true;
-        }
-        
         console.log("💾 Salvando no MongoDB...");
+        console.log("   - Characters: " + safeData.Characters.length);
         
-        // 🟢 AGUARDA O SAVE COMPLETAR
         const result = await Player.findOneAndUpdate(
             { userId }, 
             updateData, 
-            { upsert: true, setDefaultsOnInsert: true, new: true }
+            { 
+                upsert: true,
+                new: true,
+                setDefaultsOnInsert: true
+            }
         );
         
         if (!result) {
-            console.log("❌ FALHA: findOneAndUpdate retornou null");
+            console.log("❌ FALHA: Não conseguiu salvar");
             return res.status(500).json({ 
                 success: false, 
                 message: 'Falha ao salvar dados' 
@@ -1120,11 +1148,10 @@ app.post('/addPlayerData', checkBlacklist, async (req, res) => {
         }
         
         console.log("✅ SALVO COM SUCESSO!");
+        console.log("   - ID: " + result.userId);
         console.log("   - Personagens: " + (result.data?.Characters?.length || 0));
-        console.log("   - Username: " + result.username);
         console.log("=".repeat(60) + "\n");
         
-        // 🟢 RESPONDE COM CONFIRMAÇÃO
         res.json({ 
             success: true,
             saved: true,
@@ -1135,9 +1162,12 @@ app.post('/addPlayerData', checkBlacklist, async (req, res) => {
         console.error("❌ ERRO CRÍTICO:", error.message);
         console.error("Stack:", error.stack);
         console.log("=".repeat(60) + "\n");
-        res.status(500).json({ success: false, message: error.message });
+        res.status(500).json({ 
+            success: false, 
+            message: "Erro ao salvar: " + error.message 
+        });
     }
-});
+});;
 
 // 🆕 ENDPOINT PARA RESETAR TRANSFER AUTOMATICAMENTE
 app.post('/resetTransferAuto/:userId', async (req, res) => {
@@ -1289,3 +1319,4 @@ server.on('error', (error) => {
     console.error('Erro:', error);
     process.exit(1);
 });
+
