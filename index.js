@@ -41,7 +41,11 @@ const checkBlacklist = (req, res, next) => {
     next();
 };
 
-// Schema
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// SCHEMAS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// Schema de Players (Transfer)
 const playerSchema = new mongoose.Schema({
     userId: { type: String, required: true, unique: true },
     username: { type: String, default: "Desconhecido" },
@@ -50,22 +54,467 @@ const playerSchema = new mongoose.Schema({
     lastSeen: { type: Date, default: Date.now },
     firstSeen: { type: Date, default: Date.now },
     blacklisted: { type: Boolean, default: false },
-    manuallyAdded: { type: Boolean, default: false }, // Flag para perfis adicionados manualmente
-    transferCompleted: { type: Boolean, default: false } // Flag para indicar se já fez a transferência
+    manuallyAdded: { type: Boolean, default: false },
+    transferCompleted: { type: Boolean, default: false }
+});
+
+// Schema de Backups
+const backupSchema = new mongoose.Schema({
+    userId: { type: String, required: true, unique: true },
+    username: { type: String, default: "Desconhecido" },
+    data: Object,
+    backupType: { type: String, default: "auto" },
+    lastBackup: { type: Date, default: Date.now },
+    backupCount: { type: Number, default: 0 },
+    firstBackup: { type: Date, default: Date.now }
 });
 
 const Player = mongoose.model('Player', playerSchema);
+const Backup = mongoose.model('Backup', backupSchema);
 
 mongoose.connect(MONGO_URI)
     .then(() => console.log("MongoDB conectado"))
     .catch(err => console.error("Erro MongoDB:", err));
 
-// Health check
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ROTAS DE BACKUP
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+app.post('/addPlayerData2', async (req, res) => {
+    try {
+        const { userId, username, data, backupType } = req.body;
+        
+        if (!userId || !data) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'userId e data são obrigatórios' 
+            });
+        }
+        
+        console.log(`\n📦 [BACKUP] Recebido de: ${username} (ID: ${userId})`);
+        
+        const validatedData = {
+            Characters: Array.isArray(data.Characters) ? data.Characters : [],
+            Favorited: Array.isArray(data.Favorited) ? data.Favorited : [],
+            FavoritedCharacters: Array.isArray(data.FavoritedCharacters) ? data.FavoritedCharacters : [],
+            Coins: typeof data.Coins === 'number' ? data.Coins : 0,
+            ActiveBoost: typeof data.ActiveBoost === 'number' ? data.ActiveBoost : 0,
+            LastTransferCheck: data.LastTransferCheck || null,
+            LastJoinTime: data.LastJoinTime || null,
+            RedeemedCodes: data.RedeemedCodes || {},
+            RedeemedCompensation: Array.isArray(data.RedeemedCompensation) ? data.RedeemedCompensation : [],
+            RedeemedStarterCoins: Boolean(data.RedeemedStarterCoins),
+            HnmNewera2: Boolean(data.HnmNewera2),
+            IsNewGamePlayer: Boolean(data.IsNewGamePlayer),
+            PermanentTransferRecord: {
+                HasEverTransferred: Boolean(data.PermanentTransferRecord?.HasEverTransferred),
+                FirstTransferTimestamp: data.PermanentTransferRecord?.FirstTransferTimestamp || null,
+                TransferCount: typeof data.PermanentTransferRecord?.TransferCount === 'number' 
+                    ? data.PermanentTransferRecord.TransferCount : 0
+            },
+            QuestCollections: {
+                Crowns: typeof data.QuestCollections?.Crowns === 'number' ? data.QuestCollections.Crowns : 0,
+                PrincessCrowns: typeof data.QuestCollections?.PrincessCrowns === 'number' ? data.QuestCollections.PrincessCrowns : 0,
+                ZeusBolts: typeof data.QuestCollections?.ZeusBolts === 'number' ? data.QuestCollections.ZeusBolts : 0,
+                MadisonSkulls: typeof data.QuestCollections?.MadisonSkulls === 'number' ? data.QuestCollections.MadisonSkulls : 0,
+                LokiRose: typeof data.QuestCollections?.LokiRose === 'number' ? data.QuestCollections.LokiRose : 0,
+                DJCoins: typeof data.QuestCollections?.DJCoins === 'number' ? data.QuestCollections.DJCoins : 0,
+                HarryUltronKills: typeof data.QuestCollections?.HarryUltronKills === 'number' ? data.QuestCollections.HarryUltronKills : 0,
+                FortuneTellerUltronKills: typeof data.QuestCollections?.FortuneTellerUltronKills === 'number' ? data.QuestCollections.FortuneTellerUltronKills : 0,
+                KingKills: typeof data.QuestCollections?.KingKills === 'number' ? data.QuestCollections.KingKills : 0,
+                ArcherKills: typeof data.QuestCollections?.ArcherKills === 'number' ? data.QuestCollections.ArcherKills : 0,
+                JavelinKills: typeof data.QuestCollections?.JavelinKills === 'number' ? data.QuestCollections.JavelinKills : 0,
+                BeeCrowns: typeof data.QuestCollections?.BeeCrowns === 'number' ? data.QuestCollections.BeeCrowns : 0,
+                Pyramids: typeof data.QuestCollections?.Pyramids === 'number' ? data.QuestCollections.Pyramids : 0,
+                TechCoins: typeof data.QuestCollections?.TechCoins === 'number' ? data.QuestCollections.TechCoins : 0
+            }
+        };
+        
+        const existingBackup = await Backup.findOne({ userId });
+        
+        if (existingBackup) {
+            existingBackup.username = username || existingBackup.username;
+            existingBackup.data = validatedData;
+            existingBackup.lastBackup = new Date();
+            existingBackup.backupCount = (existingBackup.backupCount || 0) + 1;
+            existingBackup.backupType = backupType || existingBackup.backupType;
+            await existingBackup.save();
+            console.log(`✅ Backup atualizado: ${username} - ${validatedData.Characters.length} chars, ${validatedData.Coins} coins`);
+        } else {
+            const newBackup = new Backup({
+                userId,
+                username: username || "Desconhecido",
+                data: validatedData,
+                backupType: backupType || "auto",
+                backupCount: 1
+            });
+            await newBackup.save();
+            console.log(`🆕 Novo backup criado: ${username} - ${validatedData.Characters.length} chars, ${validatedData.Coins} coins`);
+        }
+        
+        res.json({ 
+            success: true, 
+            message: 'Backup salvo com sucesso',
+            characters: validatedData.Characters.length,
+            coins: validatedData.Coins
+        });
+        
+    } catch (error) {
+        console.error('❌ Erro ao salvar backup:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.get('/listBackups', authMiddleware, async (req, res) => {
+    try {
+        const backups = await Backup.find()
+            .select('userId username lastBackup backupCount backupType data')
+            .sort({ lastBackup: -1 });
+        
+        const enrichedBackups = backups.map(backup => ({
+            userId: backup.userId,
+            username: backup.username,
+            lastBackup: backup.lastBackup,
+            backupCount: backup.backupCount,
+            backupType: backup.backupType,
+            characters: backup.data?.Characters?.length || 0,
+            coins: backup.data?.Coins || 0
+        }));
+        
+        res.json({ success: true, backups: enrichedBackups, total: backups.length });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.get('/getBackup/:userId', authMiddleware, async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const backup = await Backup.findOne({ userId });
+        if (!backup) {
+            return res.status(404).json({ success: false, message: 'Backup não encontrado' });
+        }
+        res.json({ success: true, backup });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.post('/restoreFromBackup/:userId', authMiddleware, async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const backup = await Backup.findOne({ userId });
+        if (!backup) {
+            return res.status(404).json({ success: false, message: 'Backup não encontrado' });
+        }
+        
+        const player = await Player.findOne({ userId });
+        if (!player) {
+            return res.status(404).json({ success: false, message: 'Jogador não encontrado no sistema principal' });
+        }
+        
+        player.data = backup.data;
+        player.lastSeen = new Date();
+        await player.save();
+        
+        console.log(`🔄 Dados restaurados do backup para: ${backup.username}`);
+        res.json({ 
+            success: true, 
+            message: 'Dados restaurados com sucesso do backup',
+            characters: backup.data.Characters?.length || 0,
+            coins: backup.data.Coins || 0
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.delete('/deleteBackup/:userId', authMiddleware, async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const result = await Backup.findOneAndDelete({ userId });
+        if (!result) {
+            return res.status(404).json({ success: false, message: 'Backup não encontrado' });
+        }
+        res.json({ success: true, message: 'Backup deletado com sucesso' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.get('/backupStats', authMiddleware, async (req, res) => {
+    try {
+        const totalBackups = await Backup.countDocuments();
+        const last24h = await Backup.countDocuments({
+            lastBackup: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+        });
+        res.json({
+            success: true,
+            stats: { totalBackups, last24Hours: last24h }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// PÁGINA DE BACKUPS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+app.get('/backups', (req, res) => {
+    res.send(`<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HNM Backups</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            color: #e0e0e0;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container { max-width: 1400px; margin: 0 auto; }
+        .header {
+            background: rgba(20, 20, 20, 0.8);
+            border: 1px solid rgba(0,255,136,0.2);
+            border-radius: 20px;
+            padding: 35px;
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        h1 {
+            font-size: 38px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #00ccff, #0088ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .back-btn {
+            background: rgba(255,255,255,0.1);
+            border: none;
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: rgba(20, 20, 20, 0.6);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 15px;
+            padding: 25px;
+        }
+        .stat-value { font-size: 36px; font-weight: 700; color: #00ccff; margin-bottom: 8px; }
+        .stat-label { font-size: 13px; color: #888; text-transform: uppercase; }
+        .backups-section {
+            background: rgba(20, 20, 20, 0.6);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 20px;
+            padding: 30px;
+        }
+        .section-title { font-size: 22px; font-weight: 600; margin-bottom: 25px; color: #fff; }
+        .backup-item {
+            background: rgba(30, 30, 30, 0.8);
+            border: 1px solid rgba(255,255,255,0.05);
+            border-left: 4px solid #00ccff;
+            border-radius: 12px;
+            padding: 20px;
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1fr auto;
+            gap: 20px;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .backup-info { color: #fff; font-weight: 600; }
+        .backup-meta { color: #888; font-size: 14px; }
+        .backup-btn {
+            background: rgba(0, 150, 255, 0.3);
+            border: 2px solid rgba(0, 150, 255, 0.6);
+            color: #66b3ff;
+            padding: 10px 18px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 700;
+            transition: all 0.3s;
+        }
+        .backup-btn:hover {
+            background: rgba(0, 150, 255, 0.5);
+            border-color: #66b3ff;
+            color: #fff;
+        }
+        .delete-btn {
+            background: rgba(255, 50, 50, 0.3);
+            border: 2px solid rgba(255, 50, 50, 0.6);
+            color: #ff6666;
+        }
+        .delete-btn:hover {
+            background: rgba(255, 50, 50, 0.5);
+            border-color: #ff5555;
+            color: #fff;
+        }
+        .loading { text-align: center; padding: 50px; color: #666; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>💾 Sistema de Backup</h1>
+            <button class="back-btn" onclick="window.location.href='/'">← Voltar</button>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value" id="totalBackups">0</div>
+                <div class="stat-label">Total de Backups</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="last24h">0</div>
+                <div class="stat-label">Últimas 24h</div>
+            </div>
+        </div>
+
+        <div class="backups-section">
+            <div class="section-title">📋 Backups Registrados</div>
+            <div id="backupList">
+                <div class="loading">Carregando backups...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let savedPassword = sessionStorage.getItem('hnmPassword');
+
+        async function loadBackups() {
+            if (!savedPassword) {
+                alert('Faça login primeiro!');
+                window.location.href = '/';
+                return;
+            }
+
+            try {
+                const statsResponse = await fetch('/backupStats', {
+                    headers: { 'x-password': savedPassword }
+                });
+                const stats = await statsResponse.json();
+                
+                document.getElementById('totalBackups').textContent = stats.stats.totalBackups;
+                document.getElementById('last24h').textContent = stats.stats.last24Hours;
+
+                const response = await fetch('/listBackups', {
+                    headers: { 'x-password': savedPassword }
+                });
+                const data = await response.json();
+
+                const list = document.getElementById('backupList');
+                
+                if (data.backups.length === 0) {
+                    list.innerHTML = '<div class="loading">Nenhum backup encontrado.</div>';
+                    return;
+                }
+
+                list.innerHTML = data.backups.map(backup => \`
+                    <div class="backup-item">
+                        <div>
+                            <div class="backup-info">\${backup.username}</div>
+                            <div class="backup-meta">ID: \${backup.userId}</div>
+                        </div>
+                        <div>
+                            <div class="backup-info">\${backup.characters}</div>
+                            <div class="backup-meta">Personagens</div>
+                        </div>
+                        <div>
+                            <div class="backup-info">\${backup.coins.toLocaleString()}</div>
+                            <div class="backup-meta">Coins</div>
+                        </div>
+                        <div>
+                            <div class="backup-info">\${new Date(backup.lastBackup).toLocaleString('pt-BR')}</div>
+                            <div class="backup-meta">\${backup.backupCount}x backups</div>
+                        </div>
+                        <div style="display: flex; gap: 10px;">
+                            <button class="backup-btn" onclick="restoreBackup('\${backup.userId}', '\${backup.username}')">
+                                🔄 Restaurar
+                            </button>
+                            <button class="backup-btn delete-btn" onclick="deleteBackup('\${backup.userId}')">
+                                🗑️
+                            </button>
+                        </div>
+                    </div>
+                \`).join('');
+
+            } catch (error) {
+                console.error('Erro:', error);
+            }
+        }
+
+        async function restoreBackup(userId, username) {
+            const confirm = window.confirm(\`Restaurar backup de \${username}?\\n\\nIsso substituirá os dados atuais do jogador!\`);
+            if (!confirm) return;
+
+            try {
+                const response = await fetch(\`/restoreFromBackup/\${userId}\`, {
+                    method: 'POST',
+                    headers: { 'x-password': savedPassword }
+                });
+
+                if (response.ok) {
+                    alert('Backup restaurado com sucesso!');
+                } else {
+                    alert('Erro ao restaurar backup');
+                }
+            } catch (error) {
+                console.error('Erro:', error);
+                alert('Erro ao restaurar backup');
+            }
+        }
+
+        async function deleteBackup(userId) {
+            const confirm = window.confirm('Deletar este backup permanentemente?');
+            if (!confirm) return;
+
+            try {
+                const response = await fetch(\`/deleteBackup/\${userId}\`, {
+                    method: 'DELETE',
+                    headers: { 'x-password': savedPassword }
+                });
+
+                if (response.ok) {
+                    loadBackups();
+                } else {
+                    alert('Erro ao deletar backup');
+                }
+            } catch (error) {
+                console.error('Erro:', error);
+                alert('Erro ao deletar backup');
+            }
+        }
+
+        loadBackups();
+        setInterval(loadBackups, 10000);
+    </script>
+</body>
+</html>`);
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ROTAS DE TRANSFER (SUAS ROTAS ORIGINAIS)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 app.get('/health', (req, res) => {
     res.status(200).json({ status: 'ok' });
 });
 
-// Painel
 app.get('/', (req, res) => {
     res.send(`<!DOCTYPE html>
 <html lang="pt-BR">
@@ -175,7 +624,12 @@ app.get('/', (req, res) => {
             -webkit-text-fill-color: transparent;
             margin-bottom: 10px;
         }
-        .logout-btn {
+        .header-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .logout-btn, .backups-btn {
             background: rgba(255, 50, 50, 0.2);
             border: 1px solid rgba(255, 50, 50, 0.5);
             color: #ff5555;
@@ -184,6 +638,11 @@ app.get('/', (req, res) => {
             cursor: pointer;
             font-size: 13px;
             border: none;
+        }
+        .backups-btn {
+            background: rgba(0, 150, 255, 0.2);
+            border: 1px solid rgba(0, 150, 255, 0.5);
+            color: #66b3ff;
         }
         .stats-grid {
             display: grid;
@@ -556,7 +1015,10 @@ app.get('/', (req, res) => {
         <div class="header">
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <h1>🎮 Heroes: New Multiverse</h1>
-                <button class="logout-btn" onclick="logout()">Sair</button>
+                <div class="header-actions">
+                    <button class="backups-btn" onclick="window.location.href='/backups'">💾 Backups</button>
+                    <button class="logout-btn" onclick="logout()">Sair</button>
+                </div>
             </div>
         </div>
 
@@ -841,197 +1303,6 @@ app.get('/', (req, res) => {
         async function savePlayerData() {
             if (!playerToEdit || !savedPassword) return;
 
-            try {
-                const coins = parseInt(document.getElementById('editCoins').value) || 0;
-                const charactersText = document.getElementById('editCharacters').value.trim();
-                
-                let characters;
-                try {
-                    characters = charactersText ? JSON.parse(charactersText) : [];
-                    if (!Array.isArray(characters)) {
-                        alert('Characters deve ser um array JSON válido!');
-                        return;
-                    }
-                } catch (e) {
-                    alert('Erro ao processar Characters: JSON inválido!');
-                    return;
-                }
-
-                // Buscar dados atuais
-                const getResponse = await fetch(\`/getOrFetchPlayerData?userId=\${playerToEdit}\`, {
-                    headers: { 'x-password': savedPassword }
-                });
-                
-                const currentData = await getResponse.json();
-                const playerData = currentData.data?.Data || {};
-                
-                // Atualizar apenas Characters e Coins
-                playerData.Characters = characters;
-                playerData.Coins = coins;
-
-                // Salvar
-                const response = await fetch('/updatePlayerData', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'x-password': savedPassword
-                    },
-                    body: JSON.stringify({
-                        userId: playerToEdit,
-                        data: playerData
-                    })
-                });
-
-                if (response.ok) {
-                    closeEditModal();
-                    alert('Dados salvos com sucesso!');
-                    await loadPlayers();
-                } else {
-                    alert('Erro ao salvar dados');
-                }
-            } catch (error) {
-                console.error('Erro:', error);
-                alert('Erro ao salvar dados do jogador');
-            }
-        }
-
-        async function addNewPlayer() {
-            if (!savedPassword) return;
-
-            const userId = document.getElementById('addUserId').value.trim();
-            const coins = parseInt(document.getElementById('addCoins').value) || 0;
-            const charactersText = document.getElementById('addCharacters').value.trim();
-
-            if (!userId) {
-                alert('Por favor, digite o User ID do Roblox!');
-                return;
-            }
-
-            let characters;
-            try {
-                characters = charactersText ? JSON.parse(charactersText) : [];
-                if (!Array.isArray(characters)) {
-                    alert('Characters deve ser um array JSON válido!');
-                    return;
-                }
-            } catch (e) {
-                alert('Erro ao processar Characters: JSON inválido!');
-                return;
-            }
-
-            try {
-                // Buscar username do Roblox
-                let username = "Desconhecido";
-                try {
-                    const userResponse = await fetch(\`https://users.roblox.com/v1/users/\${userId}\`);
-                    if (userResponse.ok) {
-                        const userData = await userResponse.json();
-                        username = userData.name || "Desconhecido";
-                    }
-                } catch (e) {
-                    console.log('Não foi possível buscar username');
-                }
-
-                // Criar estrutura completa do profile
-                const fullData = {
-                    Characters: characters,
-                    Favorited: [],
-                    FavoritedCharacters: [],
-                    Coins: coins,
-                    ActiveBoost: 0,
-                    LastTransferCheck: null,
-                    LastJoinTime: null,
-                    RedeemedCodes: [],
-                    RedeemedCompensation: [],
-                    RedeemedStarterCoins: false,
-                    HnmNewera2: false,
-                    QuestCollections: {
-                        Crowns: 0,
-                        PrincessCrowns: 0,
-                        ZeusBolts: 0,
-                        MadisonSkulls: 0,
-                        LokiRose: 0,
-                        DJCoins: 0,
-                        HarryUltronKills: 0,
-                        FortuneTellerUltronKills: 0,
-                        KingKills: 0,
-                        ArcherKills: 0,
-                        JavelinKills: 0,
-                        BeeCrowns: 0,
-                        Pyramids: 0,
-                    }
-                };
-
-                const response = await fetch('/addPlayerData', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'x-password': savedPassword
-                    },
-                    body: JSON.stringify({
-                        userId: userId,
-                        username: username,
-                        data: fullData,
-                        manuallyAdded: true
-                    })
-                });
-
-                if (response.ok) {
-                    // Marcar como adicionado manualmente no banco
-                    await fetch(\`/setManualFlag/\${userId}\`, {
-                        method: 'POST',
-                        headers: { 'x-password': savedPassword }
-                    });
-                    
-                    alert(\`Jogador \${username} adicionado com sucesso!\\n\\nIMPORTANTE: Os dados deste jogador estão PROTEGIDOS até que ele faça a transferência no jogo.\`);
-                    document.getElementById('addUserId').value = '';
-                    document.getElementById('addCoins').value = '0';
-                    document.getElementById('addCharacters').value = '[]';
-                    await loadPlayers();
-                    currentPage = 1;
-                    renderPlayers();
-                } else {
-                    alert('Erro ao adicionar jogador');
-                }
-            } catch (error) {
-                console.error('Erro:', error);
-                alert('Erro ao adicionar jogador');
-            }
-        }
-
-        async function confirmDelete() {
-            if (!playerToDelete || !savedPassword) return;
-
-            try {
-                const response = await fetch(\`/deletePlayer/\${playerToDelete}\`, {
-                    method: 'DELETE',
-                    headers: { 'x-password': savedPassword }
-                });
-
-                if (response.ok) {
-                    closeConfirmModal();
-                    await loadPlayers();
-                    
-                    // Ajustar página se necessário
-                    const totalPages = Math.ceil(allPlayers.length / playersPerPage);
-                    if (currentPage > totalPages && currentPage > 1) {
-                        currentPage = totalPages;
-                    }
-                    renderPlayers();
-                } else {
-                    alert('Erro ao deletar jogador');
-                }
-            } catch (error) {
-                console.error('Erro:', error);
-                alert('Erro ao deletar jogador');
-            }
-        }
-    </script>
-</body>
-</html>`);
-});
-
-// Rotas
 app.get('/getOrFetchPlayerData', async (req, res) => {
     const userId = req.query.userId;
     if (!userId) {
@@ -1053,284 +1324,6 @@ app.get('/getOrFetchPlayerData', async (req, res) => {
     }
 });
 
-// 📦 ADICIONAR AO SEU SERVER.JS EXISTENTE
-
-// Schema para Backups
-const backupSchema = new mongoose.Schema({
-    userId: { type: String, required: true, unique: true },
-    username: { type: String, default: "Desconhecido" },
-    data: Object,
-    backupType: { type: String, default: "auto" }, // "auto" ou "manual"
-    lastBackup: { type: Date, default: Date.now },
-    backupCount: { type: Number, default: 0 },
-    firstBackup: { type: Date, default: Date.now }
-});
-
-const Backup = mongoose.model('Backup', backupSchema);
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 📥 RECEBER BACKUP DO ROBLOX
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-app.post('/addPlayerData2', async (req, res) => {
-    try {
-        const { userId, username, data, backupType } = req.body;
-        
-        if (!userId || !data) {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'userId e data são obrigatórios' 
-            });
-        }
-        
-        console.log(`\n📦 [BACKUP] Recebido de: ${username} (ID: ${userId})`);
-        
-        // Validar estrutura de dados
-        const validatedData = {
-            Characters: Array.isArray(data.Characters) ? data.Characters : [],
-            Favorited: Array.isArray(data.Favorited) ? data.Favorited : [],
-            FavoritedCharacters: Array.isArray(data.FavoritedCharacters) ? data.FavoritedCharacters : [],
-            Coins: typeof data.Coins === 'number' ? data.Coins : 0,
-            ActiveBoost: typeof data.ActiveBoost === 'number' ? data.ActiveBoost : 0,
-            LastTransferCheck: data.LastTransferCheck || null,
-            LastJoinTime: data.LastJoinTime || null,
-            RedeemedCodes: data.RedeemedCodes || {},
-            RedeemedCompensation: Array.isArray(data.RedeemedCompensation) ? data.RedeemedCompensation : [],
-            RedeemedStarterCoins: Boolean(data.RedeemedStarterCoins),
-            HnmNewera2: Boolean(data.HnmNewera2),
-            IsNewGamePlayer: Boolean(data.IsNewGamePlayer),
-            PermanentTransferRecord: {
-                HasEverTransferred: Boolean(data.PermanentTransferRecord?.HasEverTransferred),
-                FirstTransferTimestamp: data.PermanentTransferRecord?.FirstTransferTimestamp || null,
-                TransferCount: typeof data.PermanentTransferRecord?.TransferCount === 'number' 
-                    ? data.PermanentTransferRecord.TransferCount : 0
-            },
-            QuestCollections: {
-                Crowns: typeof data.QuestCollections?.Crowns === 'number' ? data.QuestCollections.Crowns : 0,
-                PrincessCrowns: typeof data.QuestCollections?.PrincessCrowns === 'number' ? data.QuestCollections.PrincessCrowns : 0,
-                ZeusBolts: typeof data.QuestCollections?.ZeusBolts === 'number' ? data.QuestCollections.ZeusBolts : 0,
-                MadisonSkulls: typeof data.QuestCollections?.MadisonSkulls === 'number' ? data.QuestCollections.MadisonSkulls : 0,
-                LokiRose: typeof data.QuestCollections?.LokiRose === 'number' ? data.QuestCollections.LokiRose : 0,
-                DJCoins: typeof data.QuestCollections?.DJCoins === 'number' ? data.QuestCollections.DJCoins : 0,
-                HarryUltronKills: typeof data.QuestCollections?.HarryUltronKills === 'number' ? data.QuestCollections.HarryUltronKills : 0,
-                FortuneTellerUltronKills: typeof data.QuestCollections?.FortuneTellerUltronKills === 'number' ? data.QuestCollections.FortuneTellerUltronKills : 0,
-                KingKills: typeof data.QuestCollections?.KingKills === 'number' ? data.QuestCollections.KingKills : 0,
-                ArcherKills: typeof data.QuestCollections?.ArcherKills === 'number' ? data.QuestCollections.ArcherKills : 0,
-                JavelinKills: typeof data.QuestCollections?.JavelinKills === 'number' ? data.QuestCollections.JavelinKills : 0,
-                BeeCrowns: typeof data.QuestCollections?.BeeCrowns === 'number' ? data.QuestCollections.BeeCrowns : 0,
-                Pyramids: typeof data.QuestCollections?.Pyramids === 'number' ? data.QuestCollections.Pyramids : 0,
-                TechCoins: typeof data.QuestCollections?.TechCoins === 'number' ? data.QuestCollections.TechCoins : 0
-            }
-        };
-        
-        // Buscar backup existente
-        const existingBackup = await Backup.findOne({ userId });
-        
-        if (existingBackup) {
-            // Atualizar backup existente
-            existingBackup.username = username || existingBackup.username;
-            existingBackup.data = validatedData;
-            existingBackup.lastBackup = new Date();
-            existingBackup.backupCount = (existingBackup.backupCount || 0) + 1;
-            existingBackup.backupType = backupType || existingBackup.backupType;
-            
-            await existingBackup.save();
-            
-            console.log(`✅ Backup atualizado: ${username} - ${validatedData.Characters.length} chars, ${validatedData.Coins} coins`);
-        } else {
-            // Criar novo backup
-            const newBackup = new Backup({
-                userId,
-                username: username || "Desconhecido",
-                data: validatedData,
-                backupType: backupType || "auto",
-                backupCount: 1
-            });
-            
-            await newBackup.save();
-            
-            console.log(`🆕 Novo backup criado: ${username} - ${validatedData.Characters.length} chars, ${validatedData.Coins} coins`);
-        }
-        
-        res.json({ 
-            success: true, 
-            message: 'Backup salvo com sucesso',
-            characters: validatedData.Characters.length,
-            coins: validatedData.Coins
-        });
-        
-    } catch (error) {
-        console.error('❌ Erro ao salvar backup:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: error.message 
-        });
-    }
-});
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 📋 LISTAR TODOS OS BACKUPS
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-app.get('/listBackups', authMiddleware, async (req, res) => {
-    try {
-        const backups = await Backup.find()
-            .select('userId username lastBackup backupCount backupType')
-            .sort({ lastBackup: -1 });
-        
-        const enrichedBackups = backups.map(backup => ({
-            userId: backup.userId,
-            username: backup.username,
-            lastBackup: backup.lastBackup,
-            backupCount: backup.backupCount,
-            backupType: backup.backupType,
-            characters: backup.data?.Characters?.length || 0,
-            coins: backup.data?.Coins || 0
-        }));
-        
-        res.json({ 
-            success: true, 
-            backups: enrichedBackups,
-            total: backups.length
-        });
-    } catch (error) {
-        res.status(500).json({ 
-            success: false, 
-            message: error.message 
-        });
-    }
-});
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 🔍 VER BACKUP ESPECÍFICO
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-app.get('/getBackup/:userId', authMiddleware, async (req, res) => {
-    try {
-        const { userId } = req.params;
-        const backup = await Backup.findOne({ userId });
-        
-        if (!backup) {
-            return res.status(404).json({ 
-                success: false, 
-                message: 'Backup não encontrado' 
-            });
-        }
-        
-        res.json({ 
-            success: true, 
-            backup 
-        });
-    } catch (error) {
-        res.status(500).json({ 
-            success: false, 
-            message: error.message 
-        });
-    }
-});
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 🔄 RESTAURAR BACKUP PARA PLAYER
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-app.post('/restoreFromBackup/:userId', authMiddleware, async (req, res) => {
-    try {
-        const { userId } = req.params;
-        
-        // Buscar backup
-        const backup = await Backup.findOne({ userId });
-        if (!backup) {
-            return res.status(404).json({ 
-                success: false, 
-                message: 'Backup não encontrado' 
-            });
-        }
-        
-        // Restaurar para o player principal
-        const player = await Player.findOne({ userId });
-        if (!player) {
-            return res.status(404).json({ 
-                success: false, 
-                message: 'Jogador não encontrado no sistema principal' 
-            });
-        }
-        
-        // Copiar dados do backup
-        player.data = backup.data;
-        player.lastSeen = new Date();
-        await player.save();
-        
-        console.log(`🔄 Dados restaurados do backup para: ${backup.username}`);
-        
-        res.json({ 
-            success: true, 
-            message: 'Dados restaurados com sucesso do backup',
-            characters: backup.data.Characters?.length || 0,
-            coins: backup.data.Coins || 0
-        });
-        
-    } catch (error) {
-        res.status(500).json({ 
-            success: false, 
-            message: error.message 
-        });
-    }
-});
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 🗑️ DELETAR BACKUP
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-app.delete('/deleteBackup/:userId', authMiddleware, async (req, res) => {
-    try {
-        const { userId } = req.params;
-        const result = await Backup.findOneAndDelete({ userId });
-        
-        if (!result) {
-            return res.status(404).json({ 
-                success: false, 
-                message: 'Backup não encontrado' 
-            });
-        }
-        
-        res.json({ 
-            success: true, 
-            message: 'Backup deletado com sucesso' 
-        });
-    } catch (error) {
-        res.status(500).json({ 
-            success: false, 
-            message: error.message 
-        });
-    }
-});
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 📊 ESTATÍSTICAS DE BACKUP
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-app.get('/backupStats', authMiddleware, async (req, res) => {
-    try {
-        const totalBackups = await Backup.countDocuments();
-        const last24h = await Backup.countDocuments({
-            lastBackup: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
-        });
-        
-        const recentBackups = await Backup.find()
-            .sort({ lastBackup: -1 })
-            .limit(10)
-            .select('username lastBackup');
-        
-        res.json({
-            success: true,
-            stats: {
-                totalBackups,
-                last24Hours: last24h,
-                recentBackups
-            }
-        });
-    } catch (error) {
-        res.status(500).json({ 
-            success: false, 
-            message: error.message 
-        });
-    }
-});
-
 app.post('/addPlayerData', checkBlacklist, async (req, res) => {
     const { userId, username, data, transferCompleted } = req.body;
     
@@ -1341,7 +1334,6 @@ app.post('/addPlayerData', checkBlacklist, async (req, res) => {
     try {
         console.log(`\n📤 [addPlayerData] Recebido para: ${userId}`);
         
-        // 🟢 GARANTIR QUE DATA TEM ESTRUTURA CORRETA
         const safeData = {
             Characters: Array.isArray(data?.Characters) ? data.Characters : [],
             Coins: typeof data?.Coins === 'number' ? data.Coins : 0,
@@ -1421,32 +1413,19 @@ app.post('/addPlayerData', checkBlacklist, async (req, res) => {
     }
 });
 
-// 🆕 ENDPOINT PARA RESETAR TRANSFER AUTOMATICAMENTE
 app.post('/resetTransferAuto/:userId', async (req, res) => {
     try {
         const { userId } = req.params;
-        
         const player = await Player.findOne({ userId });
         
         if (!player) {
-            return res.status(404).json({ 
-                success: false, 
-                message: 'Jogador não encontrado' 
-            });
+            return res.status(404).json({ success: false, message: 'Jogador não encontrado' });
         }
         
-        // Remove a flag de transferência completa
-        await Player.findOneAndUpdate(
-            { userId },
-            { transferCompleted: false }
-        );
-        
+        await Player.findOneAndUpdate({ userId }, { transferCompleted: false });
         console.log(`🔄 Transfer resetada automaticamente para ${userId}`);
         
-        res.json({ 
-            success: true, 
-            message: 'Transfer resetada para novo envio' 
-        });
+        res.json({ success: true, message: 'Transfer resetada para novo envio' });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -1484,7 +1463,6 @@ app.post('/updatePlayerData', authMiddleware, async (req, res) => {
         return res.status(400).json({ success: false, message: 'userId obrigatório' });
     }
     try {
-        // Verificar se o jogador está na blacklist
         const existingPlayer = await Player.findOne({ userId });
         if (existingPlayer && existingPlayer.blacklisted) {
             return res.status(403).json({ 
@@ -1514,10 +1492,7 @@ app.post('/toggleBlacklist/:userId', authMiddleware, async (req, res) => {
         }
         
         const newBlacklistStatus = !player.blacklisted;
-        await Player.findOneAndUpdate(
-            { userId },
-            { blacklisted: newBlacklistStatus }
-        );
+        await Player.findOneAndUpdate({ userId }, { blacklisted: newBlacklistStatus });
         
         res.json({ 
             success: true, 
@@ -1532,10 +1507,7 @@ app.post('/toggleBlacklist/:userId', authMiddleware, async (req, res) => {
 app.post('/setManualFlag/:userId', authMiddleware, async (req, res) => {
     try {
         const { userId } = req.params;
-        await Player.findOneAndUpdate(
-            { userId },
-            { manuallyAdded: true, transferCompleted: false }
-        );
+        await Player.findOneAndUpdate({ userId }, { manuallyAdded: true, transferCompleted: false });
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -1545,8 +1517,6 @@ app.post('/setManualFlag/:userId', authMiddleware, async (req, res) => {
 app.post('/completeTransfer/:userId', async (req, res) => {
     try {
         const { userId } = req.params;
-        
-        // Deletar o jogador do banco após transferência completada
         const result = await Player.findOneAndDelete({ userId });
         
         if (!result) {
@@ -1564,12 +1534,12 @@ app.post('/completeTransfer/:userId', async (req, res) => {
 
 // Iniciar servidor
 const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log('Servidor HNM rodando na porta', PORT);
+    console.log('🚀 Servidor HNM rodando na porta', PORT);
+    console.log('📦 Sistema de Backup: ATIVO');
+    console.log('🔐 Transfer System: ATIVO');
 });
 
 server.on('error', (error) => {
     console.error('Erro:', error);
     process.exit(1);
 });
-
-
