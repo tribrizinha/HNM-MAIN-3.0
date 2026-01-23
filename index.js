@@ -1053,6 +1053,284 @@ app.get('/getOrFetchPlayerData', async (req, res) => {
     }
 });
 
+// 📦 ADICIONAR AO SEU SERVER.JS EXISTENTE
+
+// Schema para Backups
+const backupSchema = new mongoose.Schema({
+    userId: { type: String, required: true, unique: true },
+    username: { type: String, default: "Desconhecido" },
+    data: Object,
+    backupType: { type: String, default: "auto" }, // "auto" ou "manual"
+    lastBackup: { type: Date, default: Date.now },
+    backupCount: { type: Number, default: 0 },
+    firstBackup: { type: Date, default: Date.now }
+});
+
+const Backup = mongoose.model('Backup', backupSchema);
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 📥 RECEBER BACKUP DO ROBLOX
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+app.post('/addPlayerData2', async (req, res) => {
+    try {
+        const { userId, username, data, backupType } = req.body;
+        
+        if (!userId || !data) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'userId e data são obrigatórios' 
+            });
+        }
+        
+        console.log(`\n📦 [BACKUP] Recebido de: ${username} (ID: ${userId})`);
+        
+        // Validar estrutura de dados
+        const validatedData = {
+            Characters: Array.isArray(data.Characters) ? data.Characters : [],
+            Favorited: Array.isArray(data.Favorited) ? data.Favorited : [],
+            FavoritedCharacters: Array.isArray(data.FavoritedCharacters) ? data.FavoritedCharacters : [],
+            Coins: typeof data.Coins === 'number' ? data.Coins : 0,
+            ActiveBoost: typeof data.ActiveBoost === 'number' ? data.ActiveBoost : 0,
+            LastTransferCheck: data.LastTransferCheck || null,
+            LastJoinTime: data.LastJoinTime || null,
+            RedeemedCodes: data.RedeemedCodes || {},
+            RedeemedCompensation: Array.isArray(data.RedeemedCompensation) ? data.RedeemedCompensation : [],
+            RedeemedStarterCoins: Boolean(data.RedeemedStarterCoins),
+            HnmNewera2: Boolean(data.HnmNewera2),
+            IsNewGamePlayer: Boolean(data.IsNewGamePlayer),
+            PermanentTransferRecord: {
+                HasEverTransferred: Boolean(data.PermanentTransferRecord?.HasEverTransferred),
+                FirstTransferTimestamp: data.PermanentTransferRecord?.FirstTransferTimestamp || null,
+                TransferCount: typeof data.PermanentTransferRecord?.TransferCount === 'number' 
+                    ? data.PermanentTransferRecord.TransferCount : 0
+            },
+            QuestCollections: {
+                Crowns: typeof data.QuestCollections?.Crowns === 'number' ? data.QuestCollections.Crowns : 0,
+                PrincessCrowns: typeof data.QuestCollections?.PrincessCrowns === 'number' ? data.QuestCollections.PrincessCrowns : 0,
+                ZeusBolts: typeof data.QuestCollections?.ZeusBolts === 'number' ? data.QuestCollections.ZeusBolts : 0,
+                MadisonSkulls: typeof data.QuestCollections?.MadisonSkulls === 'number' ? data.QuestCollections.MadisonSkulls : 0,
+                LokiRose: typeof data.QuestCollections?.LokiRose === 'number' ? data.QuestCollections.LokiRose : 0,
+                DJCoins: typeof data.QuestCollections?.DJCoins === 'number' ? data.QuestCollections.DJCoins : 0,
+                HarryUltronKills: typeof data.QuestCollections?.HarryUltronKills === 'number' ? data.QuestCollections.HarryUltronKills : 0,
+                FortuneTellerUltronKills: typeof data.QuestCollections?.FortuneTellerUltronKills === 'number' ? data.QuestCollections.FortuneTellerUltronKills : 0,
+                KingKills: typeof data.QuestCollections?.KingKills === 'number' ? data.QuestCollections.KingKills : 0,
+                ArcherKills: typeof data.QuestCollections?.ArcherKills === 'number' ? data.QuestCollections.ArcherKills : 0,
+                JavelinKills: typeof data.QuestCollections?.JavelinKills === 'number' ? data.QuestCollections.JavelinKills : 0,
+                BeeCrowns: typeof data.QuestCollections?.BeeCrowns === 'number' ? data.QuestCollections.BeeCrowns : 0,
+                Pyramids: typeof data.QuestCollections?.Pyramids === 'number' ? data.QuestCollections.Pyramids : 0,
+                TechCoins: typeof data.QuestCollections?.TechCoins === 'number' ? data.QuestCollections.TechCoins : 0
+            }
+        };
+        
+        // Buscar backup existente
+        const existingBackup = await Backup.findOne({ userId });
+        
+        if (existingBackup) {
+            // Atualizar backup existente
+            existingBackup.username = username || existingBackup.username;
+            existingBackup.data = validatedData;
+            existingBackup.lastBackup = new Date();
+            existingBackup.backupCount = (existingBackup.backupCount || 0) + 1;
+            existingBackup.backupType = backupType || existingBackup.backupType;
+            
+            await existingBackup.save();
+            
+            console.log(`✅ Backup atualizado: ${username} - ${validatedData.Characters.length} chars, ${validatedData.Coins} coins`);
+        } else {
+            // Criar novo backup
+            const newBackup = new Backup({
+                userId,
+                username: username || "Desconhecido",
+                data: validatedData,
+                backupType: backupType || "auto",
+                backupCount: 1
+            });
+            
+            await newBackup.save();
+            
+            console.log(`🆕 Novo backup criado: ${username} - ${validatedData.Characters.length} chars, ${validatedData.Coins} coins`);
+        }
+        
+        res.json({ 
+            success: true, 
+            message: 'Backup salvo com sucesso',
+            characters: validatedData.Characters.length,
+            coins: validatedData.Coins
+        });
+        
+    } catch (error) {
+        console.error('❌ Erro ao salvar backup:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: error.message 
+        });
+    }
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 📋 LISTAR TODOS OS BACKUPS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+app.get('/listBackups', authMiddleware, async (req, res) => {
+    try {
+        const backups = await Backup.find()
+            .select('userId username lastBackup backupCount backupType')
+            .sort({ lastBackup: -1 });
+        
+        const enrichedBackups = backups.map(backup => ({
+            userId: backup.userId,
+            username: backup.username,
+            lastBackup: backup.lastBackup,
+            backupCount: backup.backupCount,
+            backupType: backup.backupType,
+            characters: backup.data?.Characters?.length || 0,
+            coins: backup.data?.Coins || 0
+        }));
+        
+        res.json({ 
+            success: true, 
+            backups: enrichedBackups,
+            total: backups.length
+        });
+    } catch (error) {
+        res.status(500).json({ 
+            success: false, 
+            message: error.message 
+        });
+    }
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 🔍 VER BACKUP ESPECÍFICO
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+app.get('/getBackup/:userId', authMiddleware, async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const backup = await Backup.findOne({ userId });
+        
+        if (!backup) {
+            return res.status(404).json({ 
+                success: false, 
+                message: 'Backup não encontrado' 
+            });
+        }
+        
+        res.json({ 
+            success: true, 
+            backup 
+        });
+    } catch (error) {
+        res.status(500).json({ 
+            success: false, 
+            message: error.message 
+        });
+    }
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 🔄 RESTAURAR BACKUP PARA PLAYER
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+app.post('/restoreFromBackup/:userId', authMiddleware, async (req, res) => {
+    try {
+        const { userId } = req.params;
+        
+        // Buscar backup
+        const backup = await Backup.findOne({ userId });
+        if (!backup) {
+            return res.status(404).json({ 
+                success: false, 
+                message: 'Backup não encontrado' 
+            });
+        }
+        
+        // Restaurar para o player principal
+        const player = await Player.findOne({ userId });
+        if (!player) {
+            return res.status(404).json({ 
+                success: false, 
+                message: 'Jogador não encontrado no sistema principal' 
+            });
+        }
+        
+        // Copiar dados do backup
+        player.data = backup.data;
+        player.lastSeen = new Date();
+        await player.save();
+        
+        console.log(`🔄 Dados restaurados do backup para: ${backup.username}`);
+        
+        res.json({ 
+            success: true, 
+            message: 'Dados restaurados com sucesso do backup',
+            characters: backup.data.Characters?.length || 0,
+            coins: backup.data.Coins || 0
+        });
+        
+    } catch (error) {
+        res.status(500).json({ 
+            success: false, 
+            message: error.message 
+        });
+    }
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 🗑️ DELETAR BACKUP
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+app.delete('/deleteBackup/:userId', authMiddleware, async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const result = await Backup.findOneAndDelete({ userId });
+        
+        if (!result) {
+            return res.status(404).json({ 
+                success: false, 
+                message: 'Backup não encontrado' 
+            });
+        }
+        
+        res.json({ 
+            success: true, 
+            message: 'Backup deletado com sucesso' 
+        });
+    } catch (error) {
+        res.status(500).json({ 
+            success: false, 
+            message: error.message 
+        });
+    }
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 📊 ESTATÍSTICAS DE BACKUP
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+app.get('/backupStats', authMiddleware, async (req, res) => {
+    try {
+        const totalBackups = await Backup.countDocuments();
+        const last24h = await Backup.countDocuments({
+            lastBackup: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+        });
+        
+        const recentBackups = await Backup.find()
+            .sort({ lastBackup: -1 })
+            .limit(10)
+            .select('username lastBackup');
+        
+        res.json({
+            success: true,
+            stats: {
+                totalBackups,
+                last24Hours: last24h,
+                recentBackups
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ 
+            success: false, 
+            message: error.message 
+        });
+    }
+});
+
 app.post('/addPlayerData', checkBlacklist, async (req, res) => {
     const { userId, username, data, transferCompleted } = req.body;
     
@@ -1293,4 +1571,5 @@ server.on('error', (error) => {
     console.error('Erro:', error);
     process.exit(1);
 });
+
 
