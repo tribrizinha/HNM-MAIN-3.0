@@ -609,6 +609,754 @@ app.get('/', (req, res) => {
         </div>
     </div>
 
+    // ==========================================
+// 🛡️ ROTA DO PAINEL ANTI-BAN
+// ==========================================
+// ADICIONE ESTA ROTA AO SEU SERVIDOR EXPRESS
+
+app.get('/backups', (req, res) => {
+    res.send(`<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🛡️ Sistema Anti-Ban - HNM</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            color: #e0e0e0;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .login-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.95);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+        .login-box {
+            background: rgba(20, 20, 20, 0.9);
+            border: 1px solid rgba(0,255,136,0.3);
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 400px;
+            width: 90%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.8);
+        }
+        .login-title {
+            font-size: 28px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #00ff88, #00cc6a);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        .login-subtitle {
+            color: #888;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        .password-input {
+            width: 100%;
+            padding: 15px 20px;
+            background: rgba(30, 30, 30, 0.8);
+            border: 2px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            color: #fff;
+            font-size: 16px;
+            margin-bottom: 20px;
+        }
+        .password-input:focus {
+            outline: none;
+            border-color: #00ff88;
+        }
+        .login-btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #00ff88, #00cc6a);
+            border: none;
+            border-radius: 12px;
+            color: #000;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .error-message {
+            background: rgba(255, 50, 50, 0.2);
+            border: 1px solid rgba(255, 50, 50, 0.5);
+            color: #ff5555;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 15px;
+            text-align: center;
+            display: none;
+        }
+        .error-message.show { display: block; }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: none;
+        }
+        .container.show { display: block; }
+        .header {
+            background: rgba(20, 20, 20, 0.8);
+            border: 1px solid rgba(0,255,136,0.2);
+            border-radius: 20px;
+            padding: 35px;
+            margin-bottom: 30px;
+        }
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        h1 {
+            font-size: 38px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #00ff88, #00cc6a);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .nav-buttons {
+            display: flex;
+            gap: 10px;
+        }
+        .nav-btn {
+            padding: 10px 20px;
+            border: 2px solid rgba(0,255,136,0.3);
+            background: rgba(0,255,136,0.1);
+            color: #00ff88;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.3s;
+        }
+        .nav-btn:hover {
+            background: rgba(0,255,136,0.2);
+            border-color: #00ff88;
+        }
+        .logout-btn {
+            background: rgba(255, 50, 50, 0.2);
+            border: 1px solid rgba(255, 50, 50, 0.5);
+            color: #ff5555;
+            padding: 8px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: rgba(20, 20, 20, 0.6);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 15px;
+            padding: 25px;
+        }
+        .stat-card.emergency {
+            border: 2px solid rgba(255, 100, 100, 0.5);
+            background: rgba(255, 50, 50, 0.1);
+        }
+        .stat-value {
+            font-size: 36px;
+            font-weight: 700;
+            color: #00ff88;
+            margin-bottom: 8px;
+        }
+        .stat-value.emergency {
+            color: #ff6666;
+        }
+        .stat-label {
+            font-size: 13px;
+            color: #888;
+            text-transform: uppercase;
+        }
+        .section {
+            background: rgba(20, 20, 20, 0.6);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+        .section-title {
+            font-size: 22px;
+            font-weight: 600;
+            margin-bottom: 25px;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .user-list {
+            display: grid;
+            gap: 15px;
+        }
+        .user-item {
+            background: rgba(30, 30, 30, 0.8);
+            border: 1px solid rgba(255,255,255,0.05);
+            border-left: 4px solid #00ff88;
+            border-radius: 12px;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 20px;
+        }
+        .user-main {
+            flex: 1;
+        }
+        .user-name {
+            font-size: 17px;
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 5px;
+        }
+        .user-info {
+            font-size: 12px;
+            color: #666;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        .user-actions {
+            display: flex;
+            gap: 10px;
+        }
+        .btn {
+            padding: 10px 18px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 700;
+            border: 2px solid;
+            transition: all 0.3s;
+            white-space: nowrap;
+        }
+        .btn-view {
+            background: rgba(0, 150, 255, 0.2);
+            border-color: rgba(0, 150, 255, 0.6);
+            color: #66b3ff;
+        }
+        .btn-view:hover {
+            background: rgba(0, 150, 255, 0.4);
+            border-color: #66b3ff;
+        }
+        .btn-restore {
+            background: rgba(0, 255, 136, 0.2);
+            border-color: rgba(0, 255, 136, 0.6);
+            color: #00ff88;
+        }
+        .btn-restore:hover {
+            background: rgba(0, 255, 136, 0.4);
+            border-color: #00ff88;
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+        .badge-emergency {
+            background: rgba(255, 50, 50, 0.3);
+            color: #ff6666;
+        }
+        .badge-periodic {
+            background: rgba(0, 150, 255, 0.3);
+            color: #66b3ff;
+        }
+        .badge-join {
+            background: rgba(0, 255, 136, 0.3);
+            color: #00ff88;
+        }
+        .badge-leave {
+            background: rgba(150, 150, 150, 0.3);
+            color: #aaa;
+        }
+        .loading {
+            text-align: center;
+            padding: 50px;
+            color: #666;
+            font-size: 16px;
+        }
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        .modal.show { display: flex; }
+        .modal-box {
+            background: rgba(20, 20, 20, 0.95);
+            border: 1px solid rgba(0, 255, 136, 0.5);
+            border-radius: 15px;
+            padding: 30px;
+            max-width: 800px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        .modal-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: #00ff88;
+            margin-bottom: 20px;
+        }
+        .backup-item {
+            background: rgba(30, 30, 30, 0.6);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 15px;
+        }
+        .backup-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .backup-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .info-item {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 12px;
+            border-radius: 8px;
+        }
+        .info-label {
+            font-size: 11px;
+            color: #888;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+        .info-value {
+            font-size: 16px;
+            color: #fff;
+            font-weight: 600;
+        }
+        .close-btn {
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            margin-top: 20px;
+        }
+        .data-preview {
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            color: #aaa;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .recent-section {
+            display: grid;
+            gap: 12px;
+        }
+        .recent-item {
+            background: rgba(30, 30, 30, 0.6);
+            border-left: 3px solid #00ff88;
+            border-radius: 8px;
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .recent-info {
+            flex: 1;
+        }
+        .recent-user {
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 5px;
+        }
+        .recent-meta {
+            font-size: 12px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-overlay" id="loginOverlay">
+        <div class="login-box">
+            <div class="login-title">🛡️ Sistema Anti-Ban</div>
+            <div class="login-subtitle">Digite a senha para acessar</div>
+            <form id="loginForm">
+                <input type="password" id="passwordInput" class="password-input" placeholder="Senha" required>
+                <button type="submit" class="login-btn">Entrar</button>
+                <div class="error-message" id="errorMessage">Senha incorreta!</div>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal" id="backupsModal">
+        <div class="modal-box">
+            <div class="modal-title">📦 Backups do Jogador</div>
+            <div id="backupsList"></div>
+            <button class="close-btn" onclick="closeBackupsModal()">Fechar</button>
+        </div>
+    </div>
+
+    <div class="container" id="dashboard">
+        <div class="header">
+            <div class="header-top">
+                <h1>🛡️ Sistema Anti-Ban</h1>
+                <div class="nav-buttons">
+                    <a href="/" class="nav-btn">← Painel Principal</a>
+                    <button class="logout-btn" onclick="logout()">Sair</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value" id="totalBackups">0</div>
+                <div class="stat-label">Total de Backups</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="uniqueUsers">0</div>
+                <div class="stat-label">Usuários com Backup</div>
+            </div>
+            <div class="stat-card emergency">
+                <div class="stat-value emergency" id="emergencyBackups">0</div>
+                <div class="stat-label">Backups de Emergência</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="periodicBackups">0</div>
+                <div class="stat-label">Backups Periódicos</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title">⏰ Backups Recentes</div>
+            <div id="recentBackups" class="recent-section">
+                <div class="loading">Carregando...</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title">👥 Usuários com Backup</div>
+            <div id="usersList" class="user-list">
+                <div class="loading">Carregando...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let savedPassword = sessionStorage.getItem('hnmPassword');
+        let currentUserId = null;
+
+        if (savedPassword) {
+            verifyAndLogin(savedPassword);
+        }
+
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const password = document.getElementById('passwordInput').value;
+            await verifyAndLogin(password);
+        });
+
+        async function verifyAndLogin(password) {
+            try {
+                const response = await fetch('/getBackupStatus', {
+                    headers: { 'x-password': password }
+                });
+
+                if (response.ok) {
+                    sessionStorage.setItem('hnmPassword', password);
+                    savedPassword = password;
+                    document.getElementById('loginOverlay').style.display = 'none';
+                    document.getElementById('dashboard').classList.add('show');
+                    loadData();
+                    setInterval(loadData, 10000); // Atualiza a cada 10 segundos
+                } else {
+                    document.getElementById('errorMessage').classList.add('show');
+                    setTimeout(() => {
+                        document.getElementById('errorMessage').classList.remove('show');
+                    }, 3000);
+                }
+            } catch (error) {
+                console.error('Erro:', error);
+                document.getElementById('errorMessage').textContent = 'Erro ao conectar';
+                document.getElementById('errorMessage').classList.add('show');
+            }
+        }
+
+        function logout() {
+            sessionStorage.removeItem('hnmPassword');
+            location.reload();
+        }
+
+        async function loadData() {
+            if (!savedPassword) return;
+
+            try {
+                // Carregar status
+                const statusResponse = await fetch('/getBackupStatus', {
+                    headers: { 'x-password': savedPassword }
+                });
+                
+                if (!statusResponse.ok) {
+                    logout();
+                    return;
+                }
+
+                const statusData = await statusResponse.json();
+                
+                document.getElementById('totalBackups').textContent = statusData.stats.totalBackups;
+                document.getElementById('uniqueUsers').textContent = statusData.stats.uniqueUsers;
+                document.getElementById('emergencyBackups').textContent = statusData.stats.backupsByType.EMERGENCY || 0;
+                document.getElementById('periodicBackups').textContent = statusData.stats.backupsByType.PERIODIC || 0;
+
+                // Renderizar backups recentes
+                renderRecentBackups(statusData.recentBackups);
+
+                // Carregar lista de usuários
+                const usersResponse = await fetch('/listBackupUsers', {
+                    headers: { 'x-password': savedPassword }
+                });
+
+                if (usersResponse.ok) {
+                    const usersData = await usersResponse.json();
+                    renderUsers(usersData.users);
+                }
+
+            } catch (error) {
+                console.error('Erro ao carregar dados:', error);
+            }
+        }
+
+        function renderRecentBackups(backups) {
+            const container = document.getElementById('recentBackups');
+            
+            if (!backups || backups.length === 0) {
+                container.innerHTML = '<div class="loading">Nenhum backup recente</div>';
+                return;
+            }
+
+            container.innerHTML = backups.map(backup => {
+                const badgeClass = \`badge-\${backup.backupType.toLowerCase()}\`;
+                return \`
+                    <div class="recent-item">
+                        <div class="recent-info">
+                            <div class="recent-user">\${backup.username} (ID: \${backup.userId})</div>
+                            <div class="recent-meta">
+                                <span class="badge \${badgeClass}">\${backup.backupType}</span>
+                                <span style="margin-left: 10px;">\${backup.date}</span>
+                            </div>
+                        </div>
+                    </div>
+                \`;
+            }).join('');
+        }
+
+        function renderUsers(users) {
+            const container = document.getElementById('usersList');
+            
+            if (!users || users.length === 0) {
+                container.innerHTML = '<div class="loading">Nenhum usuário com backup</div>';
+                return;
+            }
+
+            container.innerHTML = users.map(user => {
+                const badgeClass = \`badge-\${user.lastBackupType.toLowerCase()}\`;
+                return \`
+                    <div class="user-item">
+                        <div class="user-main">
+                            <div class="user-name">\${user.username}</div>
+                            <div class="user-info">
+                                <span>ID: \${user.userId}</span>
+                                <span>📦 \${user.backupCount} backups</span>
+                                <span class="badge \${badgeClass}">\${user.lastBackupType}</span>
+                                <span>\${user.lastBackupDate}</span>
+                            </div>
+                        </div>
+                        <div class="user-actions">
+                            <button class="btn btn-view" onclick="viewBackups('\${user.userId}', '\${user.username}')">
+                                👁️ Ver Backups
+                            </button>
+                            <button class="btn btn-restore" onclick="restoreLatest('\${user.userId}', '\${user.username}')">
+                                🔄 Restaurar Último
+                            </button>
+                        </div>
+                    </div>
+                \`;
+            }).join('');
+        }
+
+        async function viewBackups(userId, username) {
+            currentUserId = userId;
+            
+            try {
+                const response = await fetch(\`/getPlayerBackups/\${userId}\`, {
+                    headers: { 'x-password': savedPassword }
+                });
+
+                if (!response.ok) {
+                    alert('Erro ao carregar backups');
+                    return;
+                }
+
+                const data = await response.json();
+                
+                const container = document.getElementById('backupsList');
+                
+                if (data.backups.length === 0) {
+                    container.innerHTML = '<div class="loading">Nenhum backup encontrado</div>';
+                } else {
+                    container.innerHTML = \`
+                        <div style="margin-bottom: 20px; color: #888;">
+                            <strong>\${username}</strong> tem <strong>\${data.backups.length}</strong> backup(s) salvos
+                        </div>
+                    \` + data.backups.map(backup => {
+                        const badgeClass = \`badge-\${backup.backupType.toLowerCase()}\`;
+                        const date = new Date(backup.timestamp).toLocaleString('pt-BR');
+                        
+                        return \`
+                            <div class="backup-item">
+                                <div class="backup-header">
+                                    <span class="badge \${badgeClass}">\${backup.backupType}</span>
+                                    <button class="btn btn-restore" onclick="restoreBackup('\${backup.backupId}', '\${userId}', '\${username}')">
+                                        🔄 Restaurar Este
+                                    </button>
+                                </div>
+                                <div class="backup-info">
+                                    <div class="info-item">
+                                        <div class="info-label">Data/Hora</div>
+                                        <div class="info-value">\${date}</div>
+                                    </div>
+                                    <div class="info-item">
+                                        <div class="info-label">Backup ID</div>
+                                        <div class="info-value" style="font-size: 12px;">\${backup.backupId}</div>
+                                    </div>
+                                    \${backup.placeName ? \`
+                                    <div class="info-item">
+                                        <div class="info-label">Place</div>
+                                        <div class="info-value" style="font-size: 13px;">\${backup.placeName}</div>
+                                    </div>
+                                    \` : ''}
+                                </div>
+                            </div>
+                        \`;
+                    }).join('');
+                }
+
+                document.getElementById('backupsModal').classList.add('show');
+
+            } catch (error) {
+                console.error('Erro:', error);
+                alert('Erro ao carregar backups');
+            }
+        }
+
+        function closeBackupsModal() {
+            document.getElementById('backupsModal').classList.remove('show');
+            currentUserId = null;
+        }
+
+        async function restoreLatest(userId, username) {
+            try {
+                const response = await fetch(\`/getLatestBackup/\${userId}\`, {
+                    headers: { 'x-password': savedPassword }
+                });
+
+                if (!response.ok) {
+                    alert('Nenhum backup encontrado para este usuário');
+                    return;
+                }
+
+                const data = await response.json();
+                await restoreBackup(data.backup.backupId, userId, username);
+
+            } catch (error) {
+                console.error('Erro:', error);
+                alert('Erro ao restaurar backup');
+            }
+        }
+
+        async function restoreBackup(backupId, targetUserId, username) {
+            const confirm = window.confirm(
+                \`Tem certeza que deseja RESTAURAR este backup para \${username}?\\n\\n\` +
+                \`⚠️ ATENÇÃO: Isso irá SOBRESCREVER os dados atuais do jogador!\\n\\n\` +
+                \`Backup ID: \${backupId}\`
+            );
+
+            if (!confirm) return;
+
+            try {
+                const response = await fetch('/restoreBackup', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-password': savedPassword
+                    },
+                    body: JSON.stringify({
+                        backupId: backupId,
+                        targetUserId: targetUserId
+                    })
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    alert(
+                        \`✅ Backup restaurado com sucesso!\\n\\n\` +
+                        \`📦 Characters: \${result.restoredData.characters}\\n\` +
+                        \`💰 Coins: \${result.restoredData.coins}\`
+                    );
+                    closeBackupsModal();
+                    loadData();
+                } else {
+                    alert('Erro ao restaurar backup');
+                }
+
+            } catch (error) {
+                console.error('Erro:', error);
+                alert('Erro ao restaurar backup');
+            }
+        }
+    </script>
+</body>
+</html>`);
+});
+
+console.log('✅ Painel Anti-Ban disponível em: /backups');
+
     <script>
         let savedPassword = sessionStorage.getItem('hnmPassword');
         let currentPage = 1;
@@ -1690,6 +2438,7 @@ server.on('error', (error) => {
     console.error('Erro:', error);
     process.exit(1);
 });
+
 
 
 
