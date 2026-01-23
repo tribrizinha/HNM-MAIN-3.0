@@ -1284,6 +1284,403 @@ app.post('/completeTransfer/:userId', async (req, res) => {
     }
 });
 
+// ==========================================
+// 🛡️ ENDPOINTS DO SISTEMA ANTI-BAN
+// ==========================================
+// ADICIONE ESTAS ROTAS AO SEU SERVIDOR EXPRESS
+// (Cole antes da linha "app.listen")
+
+// 📦 Schema para Backups (adicione após o playerSchema)
+const backupSchema = new mongoose.Schema({
+    userId: { type: String, required: true, index: true },
+    username: { type: String, default: "Desconhecido" },
+    data: Object,
+    backupType: { type: String, enum: ['JOIN', 'PERIODIC', 'LEAVE', 'EMERGENCY'], default: 'MANUAL' },
+    timestamp: { type: Number, default: Date.now },
+    savedAt: { type: Date, default: Date.now },
+    placeId: String,
+    placeName: String,
+    gameVersion: String
+});
+
+// Índice composto para buscar backups de um usuário ordenados por data
+backupSchema.index({ userId: 1, timestamp: -1 });
+
+const Backup = mongoose.model('Backup', backupSchema);
+
+// 📊 Estatísticas de backup em memória
+let backupStats = {
+    totalBackups: 0,
+    lastBackupTime: null,
+    backupsByType: {
+        JOIN: 0,
+        PERIODIC: 0,
+        LEAVE: 0,
+        EMERGENCY: 0
+    }
+};
+
+// ==============================================
+// 🛡️ ENDPOINT: Adicionar Backup (Anti-Ban)
+// ==============================================
+app.post('/addPlayerData2', async (req, res) => {
+    try {
+        const { userId, username, data, backupType, timestamp } = req.body;
+
+        // Validação básica
+        if (!userId || !username || !data) {
+            return res.status(400).json({
+                success: false,
+                message: 'Dados incompletos (userId, username, data são obrigatórios)'
+            });
+        }
+
+        // Extrair metadata do backup
+        const metadata = data._BackupMetadata || {};
+
+        // Criar objeto de backup
+        const backupEntry = new Backup({
+            userId,
+            username,
+            data,
+            backupType: backupType || 'MANUAL',
+            timestamp: timestamp || Date.now(),
+            savedAt: new Date(),
+            placeId: metadata.PlaceId || '',
+            placeName: metadata.PlaceName || '',
+            gameVersion: metadata.GameVersion || 'ANTI-BAN-v2'
+        });
+
+        // Salvar no banco
+        await backupEntry.save();
+
+        // Manter apenas os últimos 15 backups por usuário
+        const userBackups = await Backup.find({ userId })
+            .sort({ timestamp: -1 })
+            .skip(15);
+
+        if (userBackups.length > 0) {
+            const idsToDelete = userBackups.map(b => b._id);
+            await Backup.deleteMany({ _id: { $in: idsToDelete } });
+        }
+
+        // Atualizar estatísticas
+        backupStats.totalBackups++;
+        backupStats.lastBackupTime = new Date().toISOString();
+        if (backupStats.backupsByType[backupType]) {
+            backupStats.backupsByType[backupType]++;
+        }
+
+        console.log(`✅ [BACKUP] ${backupType} - ${username} (${userId})`);
+        console.log(`   📦 Characters: ${data.Characters?.length || 0}`);
+        console.log(`   💰 Coins: ${data.Coins || 0}`);
+        console.log(`   📊 Total Backups: ${backupStats.totalBackups}`);
+
+        res.json({
+            success: true,
+            message: 'Backup criado com sucesso',
+            backupId: backupEntry._id,
+            backupType: backupType
+        });
+
+    } catch (error) {
+        console.error('❌ [BACKUP ERROR]:', error.message);
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+});
+
+// ==============================================
+// 📊 ENDPOINT: Listar Backups de um Jogador
+// ==============================================
+app.get('/getPlayerBackups/:userId', authMiddleware, async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const limit = parseInt(req.query.limit) || 10;
+
+        const backups = await Backup.find({ userId })
+            .sort({ timestamp: -1 })
+            .limit(limit)
+            .select('-data'); // Não retornar os dados completos por padrão
+
+        res.json({
+            success: true,
+            userId,
+            totalBackups: backups.length,
+            backups: backups.map(b => ({
+                backupId: b._id,
+                username: b.username,
+                backupType: b.backupType,
+                timestamp: b.timestamp,
+                savedAt: b.savedAt,
+                placeId: b.placeId,
+                placeName: b.placeName
+            }))
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+});
+
+// ==============================================
+// 📥 ENDPOINT: Obter Backup Específico
+// ==============================================
+app.get('/getBackup/:backupId', authMiddleware, async (req, res) => {
+    try {
+        const { backupId } = req.params;
+
+        const backup = await Backup.findById(backupId);
+
+        if (!backup) {
+            return res.status(404).json({
+                success: false,
+                message: 'Backup não encontrado'
+            });
+        }
+
+        res.json({
+            success: true,
+            backup: {
+                backupId: backup._id,
+                userId: backup.userId,
+                username: backup.username,
+                data: backup.data,
+                backupType: backup.backupType,
+                timestamp: backup.timestamp,
+                savedAt: backup.savedAt,
+                placeId: backup.placeId,
+                placeName: backup.placeName,
+                gameVersion: backup.gameVersion
+            }
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+});
+
+// ==============================================
+// 🔍 ENDPOINT: Buscar Último Backup de Usuário
+// ==============================================
+app.get('/getLatestBackup/:userId', authMiddleware, async (req, res) => {
+    try {
+        const { userId } = req.params;
+
+        const backup = await Backup.findOne({ userId })
+            .sort({ timestamp: -1 });
+
+        if (!backup) {
+            return res.status(404).json({
+                success: false,
+                message: 'Nenhum backup encontrado para este usuário'
+            });
+        }
+
+        res.json({
+            success: true,
+            backup: {
+                backupId: backup._id,
+                userId: backup.userId,
+                username: backup.username,
+                data: backup.data,
+                backupType: backup.backupType,
+                timestamp: backup.timestamp,
+                savedAt: backup.savedAt,
+                placeId: backup.placeId,
+                placeName: backup.placeName,
+                gameVersion: backup.gameVersion
+            }
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+});
+
+// ==============================================
+// 📊 ENDPOINT: Status do Sistema de Backup
+// ==============================================
+app.get('/getBackupStatus', authMiddleware, async (req, res) => {
+    try {
+        const totalBackupsInDB = await Backup.countDocuments();
+        const uniqueUsers = await Backup.distinct('userId');
+        
+        const recentBackups = await Backup.find()
+            .sort({ timestamp: -1 })
+            .limit(10)
+            .select('userId username backupType timestamp');
+
+        res.json({
+            success: true,
+            stats: {
+                totalBackups: totalBackupsInDB,
+                uniqueUsers: uniqueUsers.length,
+                backupsByType: backupStats.backupsByType,
+                lastBackupTime: backupStats.lastBackupTime
+            },
+            recentBackups: recentBackups.map(b => ({
+                userId: b.userId,
+                username: b.username,
+                backupType: b.backupType,
+                timestamp: b.timestamp,
+                date: new Date(b.timestamp).toLocaleString('pt-BR')
+            }))
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+});
+
+// ==============================================
+// 🔄 ENDPOINT: Restaurar Backup para Jogador
+// ==============================================
+app.post('/restoreBackup', authMiddleware, async (req, res) => {
+    try {
+        const { backupId, targetUserId } = req.body;
+
+        if (!backupId || !targetUserId) {
+            return res.status(400).json({
+                success: false,
+                message: 'backupId e targetUserId são obrigatórios'
+            });
+        }
+
+        // Buscar o backup
+        const backup = await Backup.findById(backupId);
+
+        if (!backup) {
+            return res.status(404).json({
+                success: false,
+                message: 'Backup não encontrado'
+            });
+        }
+
+        // Buscar dados do jogador alvo
+        let targetPlayer = await Player.findOne({ userId: targetUserId });
+
+        if (!targetPlayer) {
+            // Criar novo registro se não existir
+            targetPlayer = new Player({
+                userId: targetUserId,
+                username: backup.username,
+                data: backup.data,
+                transferCompleted: true
+            });
+        } else {
+            // Atualizar dados existentes
+            targetPlayer.data = backup.data;
+            targetPlayer.lastSeen = new Date();
+        }
+
+        await targetPlayer.save();
+
+        console.log(`🔄 [RESTORE] Backup ${backupId} restaurado para ${targetUserId}`);
+
+        res.json({
+            success: true,
+            message: 'Backup restaurado com sucesso',
+            restoredData: {
+                characters: backup.data.Characters?.length || 0,
+                coins: backup.data.Coins || 0
+            }
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+});
+
+// ==============================================
+// 🗑️ ENDPOINT: Deletar Backups Antigos
+// ==============================================
+app.delete('/cleanOldBackups', authMiddleware, async (req, res) => {
+    try {
+        const daysOld = parseInt(req.query.days) || 30;
+        const cutoffDate = Date.now() - (daysOld * 24 * 60 * 60 * 1000);
+
+        const result = await Backup.deleteMany({
+            timestamp: { $lt: cutoffDate }
+        });
+
+        console.log(`🗑️ [CLEANUP] ${result.deletedCount} backups antigos deletados`);
+
+        res.json({
+            success: true,
+            message: `${result.deletedCount} backups deletados`,
+            deletedCount: result.deletedCount
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+});
+
+// ==============================================
+// 📋 ENDPOINT: Listar Todos os Usuários com Backup
+// ==============================================
+app.get('/listBackupUsers', authMiddleware, async (req, res) => {
+    try {
+        const users = await Backup.aggregate([
+            {
+                $sort: { timestamp: -1 }
+            },
+            {
+                $group: {
+                    _id: '$userId',
+                    username: { $first: '$username' },
+                    lastBackup: { $first: '$timestamp' },
+                    lastBackupType: { $first: '$backupType' },
+                    backupCount: { $sum: 1 }
+                }
+            },
+            {
+                $sort: { lastBackup: -1 }
+            }
+        ]);
+
+        res.json({
+            success: true,
+            totalUsers: users.length,
+            users: users.map(u => ({
+                userId: u._id,
+                username: u.username,
+                lastBackup: u.lastBackup,
+                lastBackupDate: new Date(u.lastBackup).toLocaleString('pt-BR'),
+                lastBackupType: u.lastBackupType,
+                backupCount: u.backupCount
+            }))
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+});
+
 // Iniciar servidor
 const server = app.listen(PORT, '0.0.0.0', () => {
     console.log('Servidor HNM rodando na porta', PORT);
@@ -1293,5 +1690,6 @@ server.on('error', (error) => {
     console.error('Erro:', error);
     process.exit(1);
 });
+
 
 
